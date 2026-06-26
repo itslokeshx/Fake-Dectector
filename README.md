@@ -1,7 +1,7 @@
 # <p align="center">🔍 TruthGuard AI</p>
 
 <p align="center">
-  <strong>The Ultimate Multi-Modal AI Fraud & Manipulation Detection Suite</strong>
+  <strong>The Ultimate Forensic AI Fraud, Deception & Fact-Checking Suite</strong>
 </p>
 
 <p align="center">
@@ -15,6 +15,7 @@
 ---
 
 ## 🌐 Live Application
+
 🚀 **Try the Deployed App Live:** [https://fake-dectector-frontend.vercel.app/](https://fake-dectector-frontend.vercel.app/)
 
 *   **Frontend Deployed on:** [Vercel](https://vercel.com/)
@@ -24,64 +25,76 @@
 
 ## 🌟 Overview
 
-**TruthGuard AI** is a cutting-edge forensic analysis platform designed to combat the rising tide of digital misinformation and AI-generated deception. Leveraged on a fully decoupled **Frontend / Backend Architecture** and powered by **Google's Gemini 3.5 Flash** with real-time Google Search grounding, TruthGuard provides a centralized suite for verifying everything from viral news and deepfake audio to fraudulent job postings and scientific research.
+**TruthGuard AI** is a state-of-the-art forensic analysis platform designed to combat digital misinformation and AI-generated deception. Built using a fully decoupled **Frontend / Backend Architecture**, TruthGuard combines **Google's Gemini 3.5** models with a custom, zero-dependency, real-time web search fact-checking engine. It provides a centralized dashboard for verifying viral news, deepfake audio, fraudulent job postings, and scientific research.
 
 > [!IMPORTANT]
-> This project is designed for researchers, fact-checkers, and everyday users who need reliable, AI-powered verification in a world increasingly filled with synthetic content.
+> This suite runs entirely on free public APIs and advanced web scraping pipelines, making real-time fact-checking accessible without expensive API keys or subscriptions.
 
 ---
 
 ## 🎥 Demo Video
 
-👉 [Watch Demo](https://drive.google.com/file/d/1sGNdWI5lcVmBTA6u5bx9k9ct7RX4ZFk8/view?t=7s)
+👉 [Watch Demo Video](https://drive.google.com/file/d/1sGNdWI5lcVmBTA6u5bx9k9ct7RX4ZFk8/view?t=7s)
 
 ---
 
-## 🚀 Key Detection Modules
+## 🚀 Specialized Verification Modules
 
-TruthGuard AI features 7 specialized engines to ensure digital integrity:
+TruthGuard AI features 7 specialized detection engines:
 
-| Module | Engine | Description |
+| Module | Engine | Verification Pipeline |
 | :--- | :--- | :--- |
-| **📰 Fake News** | Advanced AI | Real-time fact-checking and source credibility analysis. |
-| **🖼️ AI Image** | Vision AI | Pixel forensics to detect AI-generated artifacts and deepfakes. |
-| **🎤 Deepfake Voice** | Audio Analysis | MFA and MFCC feature extraction to identify synthetic speech. |
-| **💼 Fake Job** | Pattern AI | Domain verification and urgency pattern detection in job offers. |
-| **🕵️ Fraud Behavior** | Biometrics AI | Detects suspicious user activity through behavioral biometrics. |
-| **🔬 Fake Research** | Scientific AI | Verifies the methodology and credibility of research claims. |
-| **🌤️ Weather Check** | Hybrid AI | Cross-references predictions against real-time OpenWeather data. |
+| **📰 Fake News** | Advanced AI | Live search grounding (DuckDuckGo + Wikipedia + Snopes + PolitiFact) + Gemini analysis. |
+| **🖼️ AI Image** | Vision AI | Pixel forensics & visual artifact analysis to flag synthetic or manipulated images. |
+| **🎤 Deepfake Voice** | Audio Analysis | Pitch, frequency, and spectral pattern detection via Web Audio API. |
+| **💼 Fake Job** | Pattern AI | Scrutinizes salary anomalies, domain legitimacy, and urgent emotional triggers. |
+| **🕵️ Fraud Behavior** | Biometrics AI | Analyzes mouse dynamics, typing velocity, and device patterns for bots/fraud. |
+| **🔬 Fake Research** | Scientific AI | Audits research claims against citations, sample sizes, and methodology credibility. |
+| **🌤️ Weather Check** | Hybrid AI | Cross-references forecasts against real-time OpenWeather data. |
 
 ---
 
-## ✨ Advanced Features
+## ⚡ Custom Search Grounding Pipeline
 
-*   **🌌 Dynamic 3D Environment**: Powered by **Three.js**, featuring a neural network background, drifting mesh orbs, and rotating halo rings for a truly premium feel.
-*   **📊 Interactive Analytics**: Real-time confidence scores and forensic breakdowns visualized via **Chart.js**.
+The **Fake News Engine** implements a smart search-grounding architecture to supply Gemini with real-time, verified context:
+
+1. **Noun-Phrase Extraction**: Filters out common grammar/stopwords to extract up to 6 core query entities.
+2. **Comparison-Aware Splitting**: For multi-subject claims (e.g. comparing two different brands/models), it splits the terms to run multiple targeted queries in parallel.
+3. **Wikipedia TF-IDF Scoring**: Fetches full article pages (no `exintro` limits) and scores paragraphs using keyword density, appending high-ranking sections to the prompt.
+4. **Scraper Filtering**: Respectfully scrapes Snopes, PolitiFact, and FactCheck.org, filtering out sidebar navigation and author links to isolate real fact-check reports.
+5. **Google Fact Check API**: Leverages the public Fact Check database for instant verified claims.
+
+---
+
+## ✨ Design & Experience
+
+*   **🌌 Dynamic 3D Neural Web**: Built with **Three.js**, showcasing drifting mesh orbs, halo rings, and connection lines for a premium aesthetic.
+*   **📊 Interactive Analytics**: Real-time confidence scores and forensic breakdowns visualized via **Chart.js** radars and bars.
 *   **🌓 Dual-Theme OS**: Seamless transition between high-contrast Dark Mode and crystal-clear Light Mode.
-*   **⚡ Zero-Latency UI**: Built with **Vite** and **Framer Motion** for lightning-fast transitions and micro-interactions.
-*   **🛡️ Multi-Layer Security**: Integrated safety checks for NSFW content and automated forensic reporting.
+*   **⚡ Zero-Lag Micro-Animations**: Built using **Framer Motion** for fluid page-to-page transitions and interactive card flips.
 
 ---
 
-## 🛠️ Technology Stack & Architecture
+## 🛠️ Tech Stack & Folder Structure
 
 ### **📁 Decoupled Folder Structure**
 ```bash
 Fake-Dectector/
-├── frontend/        # React 18, Vite, Tailwind CSS, Three.js, Chart.js (Hosted on Vercel)
-└── backend/         # Node.js, Express.js, Google Gemini 3.5 SDK, CORS (Hosted on Render)
+├── frontend/        # React 18, Vite, Tailwind CSS, Three.js, Chart.js (Vercel)
+└── backend/         # Node.js, Express.js, Google Gemini SDK, Axios, Cheerio (Render)
 ```
 
 ### **Frontend**
-- **Framework**: React 18 (Hooks, Context, Web Audio API)
+- **Framework**: React 18 (Vite build)
 - **Styling**: Tailwind CSS & Framer Motion
-- **Visuals**: Three.js (Dynamic Neural Background System), Chart.js (Forensics breakdowns)
-- **Components**: Lucide-React & Custom Premium SVG Animations
+- **Visuals**: Three.js (neural network graphics), Chart.js (forensics charts)
+- **Components**: Lucide-React, custom SVG loaders
 
 ### **Backend**
 - **Runtime**: Node.js & Express.js
-- **AI Core**: Google Gemini 3.5 Flash & 3.1 Flash-lite (Rotated Key Chains)
-- **APIs**: Real-time Google Search Grounding API, OpenWeatherMap API
+- **AI Core**: Google Gemini 3.5 Flash / 3.1 Flash-lite (Rotated Key Chains)
+- **Search & Scraping**: Axios, Cheerio, public Wikipedia API, DuckDuckGo Lite, Google Fact Check API
+- **Weather API**: OpenWeatherMap integration
 
 ---
 
@@ -101,6 +114,7 @@ Navigate into the `backend/` folder, install dependencies, and create your `.env
 cd backend
 npm install
 ```
+
 Create a `backend/.env` file:
 ```env
 GEMINI_API_KEY_1=your_google_gemini_api_key_1
@@ -109,29 +123,21 @@ GEMINI_API_KEY_3=your_google_gemini_api_key_3 (optional backup)
 OPENWEATHER_API_KEY=your_openweather_api_key
 PORT=3000
 ```
+
 Start the backend development server:
 ```bash
 npm run dev
 ```
 
 ### 3. Configure Frontend Environment
-In a new terminal window, navigate to the `frontend/` folder, install dependencies, and run:
+In a new terminal window, navigate to the `frontend/` folder, install dependencies, and start the client:
 ```bash
-cd frontend
+cd ../frontend
 npm install
 npm run dev
 ```
-The frontend will run at `http://localhost:5174` (or `5173`) and automatically proxy all API requests to `http://localhost:3000` via Vite!
 
----
-
-## 🧩 How It Works
-
-1.  **Input Layer**: Users upload images, audio, or paste text/data into the specialized module interfaces.
-2.  **AI Orchestrator**: The backend routes requests to specific Gemini models optimized for that data type (e.g., Vision Pro for images).
-3.  **Forensic Analysis**: The system performs sub-pixel analysis (for images) or behavioral pattern matching (for fraud).
-4.  **Verdict Generation**: A comprehensive report is generated, including a **VERDICT (REAL/FAKE)** and a **Confidence Score**.
-5.  **Visualization**: Data is piped to interactive charts for deep-dive inspection.
+The frontend will run at `http://localhost:5173` (or `5174`) and automatically proxy all `/api` requests to `http://localhost:3000` via Vite's proxy configuration.
 
 ---
 

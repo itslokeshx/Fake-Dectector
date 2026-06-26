@@ -1,6 +1,6 @@
 async function testAPI() {
   const payload = {
-    text: "rcb won the ipl 2026 final",
+    text: "claude fable is accessable to everyone",
     module: "news"
   };
 

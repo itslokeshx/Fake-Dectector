@@ -5,7 +5,7 @@ import { FiFileText, FiImage, FiMic, FiBriefcase, FiActivity } from 'react-icons
 import { playBootSound, playScanTick } from '../utils/audio';
 
 // ... (keep the rest the same)
-const STEPS = [
+const STEPS_DEFAULT = [
   "▸ INITIALIZING QUANTUM ANALYSIS ENGINE...",
   "▸ ESTABLISHING SECURE CONNECTION...",
   "▸ EXTRACTING FORENSIC DATA PATTERNS...",
@@ -13,6 +13,17 @@ const STEPS = [
   "▸ CROSS-REFERENCING GLOBAL DATABASES...",
   "▸ COMPUTING PROBABILITY SCORES...",
   "▸ GENERATING VERDICT..."
+];
+
+const STEPS_NEWS = [
+  "▸ INITIALIZING FACT-CHECK PIPELINE...",
+  "▸ SEARCHING DUCKDUCKGO FOR LIVE RESULTS...",
+  "▸ QUERYING WIKIPEDIA KNOWLEDGE BASE...",
+  "▸ SCRAPING POLITIFACT & SNOPES...",
+  "▸ AGGREGATING WEB INTELLIGENCE...",
+  "▸ FEEDING CONTEXT TO GEMINI AI...",
+  "▸ CROSS-REFERENCING CLAIMS VS SOURCES...",
+  "▸ COMPUTING FORENSIC VERDICT..."
 ];
 
 const ICONS = {
@@ -26,6 +37,7 @@ const ICONS = {
 };
 
 export default function LoaderOverlay({ module }) {
+  const STEPS = module === 'news' ? STEPS_NEWS : STEPS_DEFAULT;
   const [stepIdx, setStepIdx] = useState(0);
 
   useEffect(() => {

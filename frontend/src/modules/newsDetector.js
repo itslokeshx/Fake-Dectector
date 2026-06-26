@@ -1,6 +1,7 @@
 // ─── newsDetector.js ──────────────────────────────────────────────────────────
-// Powered by Google Gemini API via Express backend (/api/analyze)
-// All values come strictly from Gemini's response — no hardcoded data.
+// Powered by Web Search Pipeline + Google Gemini API via Express backend
+// Flow: User Text → DuckDuckGo + Wikipedia + Fact-check sites → Gemini Analysis
+// All values come from the backend pipeline — no hardcoded data.
 
 import API_BASE from '../config';
 
@@ -11,8 +12,10 @@ export function normalizeConfidence(verdict, raw) {
 }
 
 /**
- * Sends news text to the backend, which calls Gemini API.
- * Returns structured result for the UI.
+ * Sends news text to the backend, which:
+ * 1. Searches DuckDuckGo, Wikipedia, PolitiFact, Snopes for live web context
+ * 2. Feeds the user's text + web search results to Gemini
+ * 3. Returns a verdict grounded in current internet data
  *
  * @param {string} text  — The news/claim text to analyze
  * @returns {Promise<{
@@ -20,8 +23,11 @@ export function normalizeConfidence(verdict, raw) {
  *   confidence: number,
  *   explanation: string,
  *   corrected_fact: string|null,
+ *   sources_used: string[],
  *   data_points: { labels: string[], values: number[] }|null,
- *   engine: 'gemini'
+ *   engine: 'gemini',
+ *   web_search: boolean,
+ *   web_search_summary: object|null
  * }>}
  */
 export async function analyzeNews(text) {
@@ -55,7 +61,10 @@ export async function analyzeNews(text) {
     confidence: data.confidence,
     explanation: data.explanation,
     corrected_fact: data.corrected_fact || null,
+    sources_used: data.sources_used || [],
     data_points: data.data_points || null,
     engine: 'gemini',
+    web_search: !!data.web_search,
+    web_search_summary: data.web_search_summary || null,
   };
 }

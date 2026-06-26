@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiX, FiInfo, FiCheckCircle, FiCopy } from 'react-icons/fi';
+import { FiX, FiInfo, FiCheckCircle, FiCopy, FiGlobe, FiExternalLink } from 'react-icons/fi';
 import { playSuccessChime, playErrorBuzzer } from '../utils/audio';
 
 // ── Animated confidence circle ────────────────────────────────────────────────
@@ -216,6 +216,9 @@ export default function ResultModal({ result, onClose }) {
   const explanation = result.explanation || 'No explanation provided.';
   const correctedFact = result.corrected_fact;
   const inputText = result.input_text || result.newsText || result.inputText || 'No input text provided.';
+  const sourcesUsed = result.sources_used || [];
+  const webSearch = result.web_search || false;
+  const webSearchSummary = result.web_search_summary || null;
   
   const showCharts = result && result.data_points && result.data_points.labels && result.data_points.labels.length > 0;
 
@@ -302,6 +305,16 @@ export default function ResultModal({ result, onClose }) {
                         ⚠️ FAKE CONTENT
                       </span>
                     )}
+                    {webSearch && (
+                      <span className="badge text-[10px] font-mono border" style={{ color: '#3b82f6', borderColor: '#3b82f640', background: '#3b82f610' }}>
+                        🌐 WEB VERIFIED
+                      </span>
+                    )}
+                    {result.grounded && (
+                      <span className="badge text-[10px] font-mono border" style={{ color: '#06b6d4', borderColor: '#06b6d440', background: '#06b6d410' }}>
+                        🔗 GROUNDED
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -374,6 +387,75 @@ export default function ResultModal({ result, onClose }) {
                         <p className="text-base leading-relaxed font-medium" style={{ color: '#ecfdf5' }}>
                           {correctedFact}
                         </p>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Web Sources Consulted */}
+                  {(webSearch || sourcesUsed.length > 0) && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }}>
+                      <div className="p-5 rounded-2xl relative overflow-hidden"
+                        style={{ background: 'rgba(37, 99, 235, 0.04)', border: '1px solid rgba(37, 99, 235, 0.15)' }}>
+                        <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#3b82f6' }} />
+                        <p className="text-xs uppercase tracking-[2px] font-mono mb-3 flex items-center gap-2" style={{ color: '#3b82f6' }}>
+                          <FiGlobe size={14} /> Web Sources Consulted
+                        </p>
+
+                        {/* Search pipeline stats */}
+                        {webSearchSummary && (
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {webSearchSummary.ddg_results > 0 && (
+                              <span className="text-[10px] font-mono px-2 py-1 rounded-md" style={{ background: 'rgba(37,99,235,0.1)', color: '#60a5fa', border: '1px solid rgba(37,99,235,0.2)' }}>
+                                🔍 DuckDuckGo: {webSearchSummary.ddg_results}
+                              </span>
+                            )}
+                            {webSearchSummary.wiki_results > 0 && (
+                              <span className="text-[10px] font-mono px-2 py-1 rounded-md" style={{ background: 'rgba(139,92,246,0.1)', color: '#a78bfa', border: '1px solid rgba(139,92,246,0.2)' }}>
+                                📚 Wikipedia: {webSearchSummary.wiki_results}
+                              </span>
+                            )}
+                            {webSearchSummary.factcheck_results > 0 && (
+                              <span className="text-[10px] font-mono px-2 py-1 rounded-md" style={{ background: 'rgba(34,197,94,0.1)', color: '#4ade80', border: '1px solid rgba(34,197,94,0.2)' }}>
+                                🕵️ Fact-Check Sites: {webSearchSummary.factcheck_results}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Source links */}
+                        {webSearchSummary?.sources?.length > 0 && (
+                          <div className="flex flex-col gap-2">
+                            {webSearchSummary.sources.slice(0, 5).map((src, i) => (
+                              <a key={i} href={src.url} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-2 text-sm transition-colors hover:text-blue-400 group"
+                                style={{ color: '#94a3b8', textDecoration: 'none' }}>
+                                <FiExternalLink size={12} className="flex-shrink-0" style={{ color: '#3b82f6' }} />
+                                <span className="truncate" style={{ maxWidth: '90%' }}>
+                                  {src.title || src.url}
+                                </span>
+                                {src.source && (
+                                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: 'rgba(255,255,255,0.05)', color: '#64748b' }}>
+                                    {src.source}
+                                  </span>
+                                )}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Gemini sources (from AI response) */}
+                        {sourcesUsed.length > 0 && !webSearchSummary?.sources?.length && (
+                          <div className="flex flex-col gap-2">
+                            {sourcesUsed.map((url, i) => (
+                              <a key={i} href={url} target="_blank" rel="noopener noreferrer"
+                                className="flex items-center gap-2 text-sm transition-colors hover:text-blue-400"
+                                style={{ color: '#94a3b8', textDecoration: 'none' }}>
+                                <FiExternalLink size={12} className="flex-shrink-0" style={{ color: '#3b82f6' }} />
+                                <span className="truncate">{url}</span>
+                              </a>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}

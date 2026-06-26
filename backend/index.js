@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { gatherWebContext, formatWebContextForPrompt } from './factChecker.js';
 dotenv.config();
 
 const app = express();
@@ -194,7 +195,7 @@ app.get('/api/warmup', (req, res) => {
   res.json({ warmed: true, keys: API_KEYS.length, model: MODEL });
 });
 
-// ─── POST /api/analyze — Fake news detection ──────────────────────────────────
+// ─── POST /api/analyze — Fake news detection (Web Search + Gemini Pipeline) ──
 app.post('/api/analyze', async (req, res) => {
   const { text } = req.body;
 
@@ -206,21 +207,54 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(500).json({ error: 'No API keys configured.' });
   }
 
-  const PROMPT = `[ SYSTEM DIRECTIVE: FORENSIC INTELLIGENCE ANALYST ]
+  try {
+    // ─── STEP 1: Gather live web context (DuckDuckGo + Wikipedia + Fact-check sites) ──
+    console.log('\n🌐 STEP 1: Gathering live web context...');
+    let webContext;
+    let webContextText = '';
+    let webSearchSuccess = false;
+
+    try {
+      webContext = await gatherWebContext(text.trim());
+      webContextText = formatWebContextForPrompt(webContext);
+      webSearchSuccess = (
+        (webContext.ddgResults?.length > 0) ||
+        (webContext.wikiResults?.length > 0) ||
+        (webContext.factCheckResults?.length > 0)
+      );
+      console.log(`✅ Web context gathered: ${webSearchSuccess ? 'SUCCESS' : 'NO RESULTS'}`);
+    } catch (webErr) {
+      console.error('⚠️ Web search pipeline failed (continuing with Gemini only):', webErr.message);
+      webContextText = '\n[Web search pipeline encountered an error. Rely on your training knowledge but note the limitation.]\n';
+    }
+
+    // ─── STEP 2: Build enhanced Gemini prompt with web context ──
+    console.log('📡 STEP 2: Sending text + web context to Gemini...');
+
+    const currentDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+    const PROMPT = `[ SYSTEM DIRECTIVE: FORENSIC INTELLIGENCE ANALYST WITH LIVE WEB DATA ]
 You are a highly advanced forensic fact-checker and AI pattern recognition system.
-IMPORTANT: You have access to Google Search. USE IT to verify any factual claims, events, dates, scores, winners, statistics, or real-world assertions in the text BEFORE making your judgment. Do NOT rely solely on your training data — always ground your analysis in real-time search results.
+
+⚠️ CRITICAL: You have been provided with LIVE WEB SEARCH RESULTS gathered moments ago from DuckDuckGo, Wikipedia, PolitiFact, Snopes, and other fact-checking sites. These results are CURRENT and REAL.
+
+You MUST:
+1. CAREFULLY read ALL the web search results provided below
+2. Cross-reference the user's text against these live results
+3. Use the web results as your PRIMARY source of truth for factual claims
+4. Only fall back to your training data if the web results don't cover a specific claim
 
 You are performing a deep-layer analysis on the following text to detect:
-1. FALSE INFORMATION / FAKE NEWS (unverified claims, lack of citations, sensationalism).
+1. FALSE INFORMATION / FAKE NEWS (unverified claims, contradicted by web results, lack of citations, sensationalism).
 2. AI-GENERATED FOOTPRINTS (repetitive syntax, uniform sentence lengths, LLM-specific transition phrases, lack of burstiness/perplexity).
-3. SCAM / DECEPTIVE INTENT (phishing elements, urgent emotional triggers, unrealistic job offers, vague company details).
+3. SCAM / DECEPTIVE INTENT (phishing elements, urgent emotional triggers, unrealistic offers, vague details).
 
 Analyze using the following 5 dimensions internally:
-A) Linguistic Fingerprint
-B) Factual Grounding (USE SEARCH RESULTS to verify claims!)
-C) Emotional Manipulation
-D) Source Authenticity
-E) Logical Consistency
+A) Linguistic Fingerprint — Does this read like human writing or AI-generated?
+B) Factual Grounding — Do the LIVE WEB RESULTS confirm or contradict the claims?
+C) Emotional Manipulation — Is the text designed to provoke fear, outrage, or urgency?
+D) Source Authenticity — Does the text cite real, verifiable sources?
+E) Logical Consistency — Are there internal contradictions or logical fallacies?
 
 If the text fails significantly on these dimensions, classify it as "FAKE". Only give "REAL" if it is definitively factual, logically sound, and human-authentic.
 
@@ -228,24 +262,33 @@ Return ONLY extremely strict, valid JSON. No markdown fences.
 {
   "verdict": "REAL" or "FAKE",
   "confidence": [integer 1-100],
-  "explanation": "[CRITICAL: Must be a highly concise, punchy 2-3 sentence summary of your findings. DO NOT list the dimensions. Keep it short and readable for a UI card!]",
-  "corrected_fact": "[If fake or misleading, provide a short 1-sentence truth or warning.]",
+  "explanation": "[CRITICAL: Must be a highly concise, punchy 2-3 sentence summary. Reference specific web search findings that confirm or contradict the claims. Keep it short and readable for a UI card!]",
+  "corrected_fact": "[If fake or misleading, provide the CORRECT information found in the web results in 1-2 sentences.]",
+  "sources_used": ["url1", "url2"],
   "data_points": {
      "labels": ["Human Written", "Factual Accuracy", "Logical Consistency", "Emotional Objectivity", "Scam/Risk Safety"],
      "values": [number, number, number, number, number]
   }
 }`;
 
-  const currentDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const fullPromptText = PROMPT +
+      `\n\n--- ENVIRONMENT CONTEXT ---\n[ Current Date: ${currentDateStr} ]\n[ Web Search Status: ${webSearchSuccess ? 'LIVE RESULTS AVAILABLE' : 'LIMITED — use training data'} ]` +
+      `\n\n═══════════════════════════════════════════════\n` +
+      `    LIVE WEB SEARCH RESULTS (USE THESE!)\n` +
+      `═══════════════════════════════════════════════\n` +
+      webContextText +
+      `\n\n═══════════════════════════════════════════════\n` +
+      `    TARGET TEXT TO FACT-CHECK\n` +
+      `═══════════════════════════════════════════════\n` +
+      text.trim();
 
-  const body = {
-    contents: [{ parts: [{ text: PROMPT + `\n\n--- ENVIRONMENT CONTEXT ---\n[ Current Date: ${currentDateStr} ]\n\n--- TARGET TEXT FOR ANALYSIS ---\n` + text.trim() }] }],
-    tools: [{ google_search: {} }],
-    generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: 'application/json' }
-  };
+    const body = {
+      contents: [{ parts: [{ text: fullPromptText }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: 'application/json' }
+    };
 
-  try {
-    console.log('📡 Calling Gemini API...');
+    // ─── STEP 3: Call Gemini with key rotation ──
     const { res: gemRes, ok, status, errText, grounded, model } = await callGeminiWithKeyRotation(body);
 
     if (!ok) {
@@ -258,7 +301,8 @@ Return ONLY extremely strict, valid JSON. No markdown fences.
         data_points: { labels: ["Human Written", "Factual Accuracy", "Logical Consistency", "Emotional Objectivity", "Scam/Risk Safety"], values: [20, 15, 40, 25, 10] },
         engine: 'mock',
         error_hint: 'quota_exceeded',
-        grounded: false
+        grounded: false,
+        web_search: false
       });
     }
 
@@ -267,25 +311,44 @@ Return ONLY extremely strict, valid JSON. No markdown fences.
 
     const verdict = parsed.verdict === 'FAKE' ? 'FAKE' : 'REAL';
     const confidence = toSafeNum(parsed.confidence, 75);
-    
+
     let explanation = typeof parsed.explanation === 'string' ? parsed.explanation : 'No explanation provided.';
-    if (!grounded) {
-      explanation += "\n\n⚠️ Note: Google Search is currently rate-limited; relying on offline AI knowledge.";
+    if (!webSearchSuccess && !grounded) {
+      explanation += "\n\n⚠️ Note: Both web search and Google Search grounding were unavailable; analysis based on AI knowledge only.";
+    } else if (!grounded && webSearchSuccess) {
+      explanation += "\n\n✅ Verified using live web search results from DuckDuckGo, Wikipedia, and fact-check databases.";
     }
 
     const corrected_fact = verdict === 'FAKE' && typeof parsed.corrected_fact === 'string' ? parsed.corrected_fact : '';
-    
+    const sources_used = Array.isArray(parsed.sources_used) ? parsed.sources_used.slice(0, 5) : [];
+
     // Normalize data_points
     const defaultLabels = ["Human Written", "Factual Accuracy", "Logical Consistency", "Emotional Objectivity", "Scam/Risk Safety"];
     const aiLabels = Array.isArray(parsed.data_points?.labels) ? parsed.data_points.labels : defaultLabels;
     const aiValues = Array.isArray(parsed.data_points?.values) ? parsed.data_points.values.map(v => toSafeNum(v)) : [confidence, 80, 80, 80, 80];
-    
+
     // Ensure length matches labels
     const finalValues = aiLabels.map((_, i) => aiValues[i] !== undefined ? aiValues[i] : 70);
     const data_points = { labels: aiLabels, values: finalValues };
 
-    console.log(`✅ Result: ${verdict} (${confidence}%) [Grounded: ${!!grounded}, Model: ${model}]`);
-    return res.json({ verdict, confidence, explanation, corrected_fact, data_points, engine: 'gemini', grounded: !!grounded, model });
+    // Build web search summary for the response
+    const webSearchSummary = webSearchSuccess ? {
+      ddg_results: webContext?.ddgResults?.length || 0,
+      wiki_results: webContext?.wikiResults?.length || 0,
+      factcheck_results: webContext?.factCheckResults?.length || 0,
+      sources: [
+        ...(webContext?.ddgResults?.slice(0, 3).map(r => ({ title: r.title, url: r.url })) || []),
+        ...(webContext?.factCheckResults?.slice(0, 2).map(r => ({ title: r.title, url: r.url, source: r.source, rating: r.rating })) || [])
+      ]
+    } : null;
+
+    console.log(`✅ Result: ${verdict} (${confidence}%) [WebSearch: ${webSearchSuccess}, Grounded: ${!!grounded}, Model: ${model}]`);
+    return res.json({
+      verdict, confidence, explanation, corrected_fact, sources_used, data_points,
+      engine: 'gemini', grounded: !!grounded, model,
+      web_search: webSearchSuccess,
+      web_search_summary: webSearchSummary
+    });
 
   } catch (err) {
     console.error(`❌ Unexpected error: ${err.message}`);

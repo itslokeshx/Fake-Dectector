@@ -54,6 +54,73 @@ TruthGuard AI features 7 specialized detection engines:
 
 ---
 
+## 🏗️ System Design & Architecture
+
+TruthGuard AI uses a fully decoupled architecture optimized for real-time parallel data fetching and low-latency processing.
+
+### 1. High-Level System Architecture
+```mermaid
+graph LR
+    subgraph Client ["Frontend (React/Vite)"]
+        UI[User Dashboard]
+        Three[Three.js Neural Network]
+        Chart[Chart.js Visualizer]
+    end
+    subgraph Server ["Backend (Node.js/Express)"]
+        API[Express Router]
+        Ground[Search Grounding Engine]
+        Model[Gemini LLM Orchestrator]
+    end
+    subgraph External ["External Fact Sources"]
+        Search[DuckDuckGo & Yahoo]
+        Wiki[Wikipedia API]
+        FC[Fact-Check Scrapers]
+        GoogleFC[Google Fact Check API]
+    end
+
+    UI -->|1. Submit Claim| API
+    API -->|2. Parallel Fetch| Ground
+    Ground -->|3. Scrape / Query| External
+    External -->|4. Text Context| Ground
+    Ground -->|5. Grounded Prompt| Model
+    Model -->|6. Structured JSON| API
+    API -->|7. JSON Report| UI
+```
+
+### 2. Multi-Engine Verification Data Pipeline
+The **Fake News Engine** implements a smart, parallel execution workflow to minimize latency and guarantee source coverage:
+
+```mermaid
+flowchart TD
+    In[Target Statement Input] --> Claims[1. Claim Deconstruction & Noun-Phrase Extraction]
+    Claims --> Engine[2. Concurrent Scrapers & APIs]
+    
+    subgraph Engine ["2. Concurrent Scrapers & APIs (Promise.all)"]
+        direction LR
+        DDG[DuckDuckGo Scraper]
+        Yahoo[Yahoo Link Scraper]
+        Wiki[Wikipedia TF-IDF Parser]
+        FC[Snopes/PolitiFact/FactCheck.org]
+        GFC[Google Fact Check Tools API]
+    end
+
+    DDG --> Merge[3. Web Results Merge]
+    Yahoo --> Merge
+    
+    Merge --> Dedup[4. URL Normalization & Strict Deduplication]
+    
+    Dedup --> Context[5. Context Grounding Consolidation]
+    Wiki --> Context
+    FC --> Context
+    GFC --> Context
+    
+    Context --> Prompt[6. Structured Prompt Synthesis]
+    Prompt --> Gemini[7. Gemini Reasoning & Output Parse]
+    Gemini --> Report[8. 4-State UI Report Render]
+```
+
+---
+
 ## ⚡ Custom Search Grounding Pipeline
 
 The **Fake News Engine** implements a smart, resilient search-grounding architecture to supply Gemini with real-time, verified context:

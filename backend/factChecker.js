@@ -88,7 +88,7 @@ export function extractKeywords(text) {
   const keywords = words.filter(w => !stopwords.has(w.toLowerCase()));
   
   if (keywords.length > 0) {
-    return keywords.slice(0, 4).join(' '); // Take up to 4 keywords
+    return keywords.slice(0, 6).join(' '); // Take up to 6 keywords to capture multiple entities
   }
   return text;
 }
@@ -136,11 +136,18 @@ export async function wikipediaSearch(term) {
     'User-Agent': 'TruthGuardFactChecker/2.0 (lokeshvijayraina@gmail.com; Academic Project)'
   };
 
-  // Search using both the raw query and keyword-focused query to merge results
-  // Prioritize the keyword-focused query (first in the array) to put cleaner terms first in the Set
   const keywords = extractKeywords(term);
   const searchQueries = [];
+
   if (keywords && keywords !== term) {
+    const words = keywords.split(' ');
+    // If it's a comparison or multi-entity claim, search for the individual components/entities too
+    if (words.length >= 4) {
+      const firstPair = words.slice(0, 2).join(' ');
+      const lastPair = words.slice(-2).join(' ');
+      searchQueries.push(firstPair);
+      searchQueries.push(lastPair);
+    }
     searchQueries.push(keywords);
   }
   searchQueries.push(term);

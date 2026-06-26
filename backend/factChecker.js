@@ -11,7 +11,43 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ─── 1. DuckDuckGo Search ─────────────────────────────────────────────────────
 export async function duckDuckGoSearch(statement) {
-  const query = `${statement} (fact check OR debunked OR verified OR snopes OR politifact OR "true" OR "false")`;
+  // Query raw statement instead of appending fact check suffixes (which break positive news)
+  const query = statement;
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Connection': 'keep-alive'
+  };
+
+  try {
+    const response = await axios.get(url, { headers, timeout: 5000 });
+    if (response.status === 200 && response.data.includes('result__body')) {
+      const $ = load(response.data);
+      const results = [];
+      $('.result__body').each((i, el) => {
+        const title = $(el).find('.result__title').text().trim();
+        let link = $(el).find('.result__url').text().trim();
+        if (link && !link.startsWith('http')) {
+          link = `https://${link}`;
+        }
+        const snippet = $(el).find('.result__snippet').text().trim();
+        if (title && link) {
+          results.push({
+            title: title.replace(/\s+/g, ' '),
+            url: link,
+            snippet: snippet.replace(/\s+/g, ' ').substring(0, 300)
+          });
+        }
+      });
+      console.log(`🔍 DDG HTML: Found ${results.length} results for: "${statement.substring(0, 60)}..."`);
+      if (results.length > 0) return results;
+    }
+  } catch (e) {
+    // Ignore and fallback to scraping library
+  }
+
   try {
     const searchResults = await search(query, {
       safeSearch: SafeSearchType.MODERATE
@@ -23,7 +59,7 @@ export async function duckDuckGoSearch(statement) {
       snippet: (r.description || r.body || '').substring(0, 300)
     }));
 
-    console.log(`🔍 DDG: Found ${results.length} results for: "${statement.substring(0, 60)}..."`);
+    console.log(`🔍 DDG Scrape (Fallback): Found ${results.length} results for: "${statement.substring(0, 60)}..."`);
     return results;
   } catch (e) {
     console.error('⚠️ DDG search error:', e.message);
@@ -33,10 +69,14 @@ export async function duckDuckGoSearch(statement) {
 
 // ─── 2. Wikipedia Knowledge Lookup ────────────────────────────────────────────
 export async function wikipediaSearch(term) {
+  const headers = {
+    'User-Agent': 'TruthGuardFactChecker/2.0 (lokeshvijayraina@gmail.com; Academic Project)'
+  };
+
   // First search for relevant articles
   const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(term)}&srlimit=3&format=json`;
   try {
-    const searchRes = await fetch(searchUrl);
+    const searchRes = await fetch(searchUrl, { headers });
     const searchData = await searchRes.json();
     const titles = (searchData.query?.search || []).map(s => s.title);
 
@@ -45,15 +85,21 @@ export async function wikipediaSearch(term) {
     const summaries = [];
     for (const title of titles.slice(0, 2)) {
       try {
-        const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-        const res = await fetch(summaryUrl);
+        const queryUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json`;
+        const res = await fetch(queryUrl, { headers });
         const data = await res.json();
-        if (data.type === 'standard' && data.extract) {
-          summaries.push({
-            title: data.title,
-            extract: data.extract.substring(0, 500),
-            url: data.content_urls?.desktop?.page || ''
-          });
+        
+        const pages = data.query?.pages;
+        if (pages) {
+          const pageId = Object.keys(pages)[0];
+          const page = pages[pageId];
+          if (page && page.extract) {
+            summaries.push({
+              title: page.title,
+              extract: page.extract.substring(0, 1000), // Get richer intro context
+              url: `https://en.wikipedia.org/wiki/${encodeURIComponent(page.title)}`
+            });
+          }
         }
       } catch (e) {
         // Skip individual article errors
@@ -155,13 +201,11 @@ export async function scrapeFactCheckSite(query, site = 'politifact.com') {
 
 // ─── 4. Google Fact Check API (free, no key needed for basic) ─────────────────
 export async function googleFactCheckSearch(query) {
-  // Google Fact Check Tools API — the ClaimReview search is available via
-  // a direct fetch to the Fact Check Explorer
   try {
     const url = `https://toolbox.google.com/factcheck/api/search?query=${encodeURIComponent(query)}&hl=en`;
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/json'
       }
     });
@@ -169,17 +213,30 @@ export async function googleFactCheckSearch(query) {
     if (!res.ok) return [];
 
     const text = await res.text();
-    // Google Fact Check API returns JSONP-like format, try to parse
+    // Google Fact Check API returns JSONP-like format
     const jsonStr = text.replace(/^\)\]\}'\n/, '');
     const data = JSON.parse(jsonStr);
 
     const results = [];
-    if (Array.isArray(data)) {
-      for (const item of data.slice(0, 5)) {
-        if (Array.isArray(item) && item.length > 0) {
-          const claim = item[0];
-          if (typeof claim === 'string' && claim.length > 10) {
-            results.push({ claim: claim.substring(0, 200), source: 'Google Fact Check' });
+    if (Array.isArray(data) && data[0] && data[0][0] === 'claims_response') {
+      const claimsList = data[0][1];
+      if (Array.isArray(claimsList)) {
+        for (const claimGroup of claimsList) {
+          const claimInfo = claimGroup[0];
+          if (Array.isArray(claimInfo)) {
+            const claimText = claimInfo[0];
+            const factCheckers = claimInfo[3] || [];
+            for (const fc of factCheckers) {
+              const publisher = fc[0]?.[0] || 'Unknown';
+              const claimUrl = fc[1] || '';
+              const rating = fc[3] || 'Unknown';
+              results.push({
+                title: claimText,
+                url: claimUrl,
+                rating: rating,
+                source: `Google Fact Check (${publisher})`
+              });
+            }
           }
         }
       }
@@ -188,7 +245,7 @@ export async function googleFactCheckSearch(query) {
     console.log(`✅ Google Fact Check: Found ${results.length} claims`);
     return results;
   } catch (e) {
-    // Silently fail — this is supplementary
+    console.error('⚠️ Google Fact Check error:', e.message);
     return [];
   }
 }
@@ -333,7 +390,8 @@ export function formatWebContextForPrompt(webContext) {
   if (webContext.googleFactChecks.length > 0) {
     sections.push('\n### Google Fact Check Claims');
     webContext.googleFactChecks.forEach(r => {
-      sections.push(`- ${r.claim} (${r.source})`);
+      sections.push(`- Claim: "${r.title}" — Rating: ${r.rating} (${r.source})`);
+      sections.push(`  URL: ${r.url}`);
     });
   }
 

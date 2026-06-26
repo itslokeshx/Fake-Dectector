@@ -335,10 +335,12 @@ Return ONLY extremely strict, valid JSON. No markdown fences.
     const webSearchSummary = webSearchSuccess ? {
       ddg_results: webContext?.ddgResults?.length || 0,
       wiki_results: webContext?.wikiResults?.length || 0,
-      factcheck_results: webContext?.factCheckResults?.length || 0,
+      factcheck_results: (webContext?.factCheckResults?.length || 0) + (webContext?.googleFactChecks?.length || 0),
       sources: [
-        ...(webContext?.ddgResults?.slice(0, 3).map(r => ({ title: r.title, url: r.url })) || []),
-        ...(webContext?.factCheckResults?.slice(0, 2).map(r => ({ title: r.title, url: r.url, source: r.source, rating: r.rating })) || [])
+        ...(webContext?.wikiResults?.slice(0, 2).map(r => ({ title: r.title, url: r.url, source: 'Wikipedia' })) || []),
+        ...(webContext?.ddgResults?.slice(0, 3).map(r => ({ title: r.title, url: r.url, source: 'Web Search' })) || []),
+        ...(webContext?.factCheckResults?.slice(0, 2).map(r => ({ title: r.title, url: r.url, source: r.source, rating: r.rating })) || []),
+        ...(webContext?.googleFactChecks?.slice(0, 2).map(r => ({ title: r.title, url: r.url, source: r.source, rating: r.rating })) || [])
       ]
     } : null;
 

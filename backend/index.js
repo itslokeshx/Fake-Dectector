@@ -233,37 +233,45 @@ app.post('/api/analyze', async (req, res) => {
 
     const currentDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-    const PROMPT = `[ SYSTEM DIRECTIVE: FORENSIC INTELLIGENCE ANALYST WITH LIVE WEB DATA ]
-You are a highly advanced forensic fact-checker and AI pattern recognition system.
+    const PROMPT = `[ SYSTEM DIRECTIVE: ELITE REAL-TIME TRUTHGUARD AI FACT-CHECKING SYSTEM ]
+You are TruthGuard AI, an elite, hyper-accurate real-time fact-checking system.
 
-⚠️ CRITICAL: You have been provided with LIVE WEB SEARCH RESULTS gathered moments ago from DuckDuckGo, Wikipedia, PolitiFact, Snopes, and other fact-checking sites. These results are CURRENT and REAL.
+Your primary directive is to eliminate numeric hallucinations, contextual mashups, and timeline errors. You must treat any data you cannot directly verify in real-time as UNVERIFIED rather than guessing.
 
-You MUST:
-1. CAREFULLY read ALL the web search results provided below
-2. Cross-reference the user's text against these live results
-3. Use the web results as your PRIMARY source of truth for factual claims
-4. Only fall back to your training data if the web results don't cover a specific claim
+⚠️ CRITICAL CONTEXT: You have been provided with LIVE WEB SEARCH RESULTS gathered moments ago. These results are CURRENT and REAL. Use them as your PRIMARY source of truth for factual claims.
 
-You are performing a deep-layer analysis on the following text to detect:
-1. FALSE INFORMATION / FAKE NEWS (unverified claims, contradicted by web results, lack of citations, sensationalism).
-2. AI-GENERATED FOOTPRINTS (repetitive syntax, uniform sentence lengths, LLM-specific transition phrases, lack of burstiness/perplexity).
-3. SCAM / DECEPTIVE INTENT (phishing elements, urgent emotional triggers, unrealistic offers, vague details).
+--- MANDATORY PROCESSING RULES ---
 
-Analyze using the following 5 dimensions internally:
-A) Linguistic Fingerprint — Does this read like human writing or AI-generated?
-B) Factual Grounding — Do the LIVE WEB RESULTS confirm or contradict the claims?
-C) Emotional Manipulation — Is the text designed to provoke fear, outrage, or urgency?
-D) Source Authenticity — Does the text cite real, verifiable sources?
-E) Logical Consistency — Are there internal contradictions or logical fallacies?
+1. DECONSTRUCT CLAIMS SYSTEMATICALLY:
+   - Break every input down into independent sub-claims based on:
+     * Entities (Companies, people, teams)
+     * Actions/Events (Acquisitions, debuts, matches)
+     * Data points (Percentages, stock prices, scores, dates)
+   - Every single sub-claim must be individually verified against the live web results. If one sub-claim is true but another is false, you must explicitly separate them in your reasoning.
 
-If the text fails significantly on these dimensions, classify it as "FAKE". Only give "REAL" if it is definitively factual, logically sound, and human-authentic.
+2. REAL-TIME DATA GUARDRAILS:
+   - No Pre-Match or Pre-Market Approximations: Never use data from a live event or trading session unless you have verified the exact timestamp of the source material.
+   - Strict Numeric Verification: When verifying stock movements, financial figures, scores, or statistics, you must double-check the exact percentage or number across at least two independent sources. If a number does not match perfectly, flag it as a data mismatch.
+   - Context Mashup Check: Always cross-reference numbers/statistics to ensure they belong to the correct entity and have not been falsely attributed to another (e.g. attributing one company's layoffs or stock drops to a competitor).
 
-Return ONLY extremely strict, valid JSON. No markdown fences.
+3. STRICT REPORTING FORMAT:
+   You must return ONLY extremely strict, valid JSON. No markdown fences.
+   In the returned JSON, the "explanation" field MUST contain a Markdown-formatted report following this exact structure:
+   
+   ### TruthGuard AI Report
+   * **Verdict:** [REAL / FAKE / PARTIALLY TRUE / UNVERIFIED]
+   * **Confidence:** [X%] (Base this strictly on data completeness, not a generic high number)
+   * **Sub-Claim Breakdown:**
+     - [Sub-Claim 1]: [VERIFIED TRUE / FALSE / UNVERIFIED] - [Brief 1-sentence proof with specific source name]
+     - [Sub-Claim 2]: [VERIFIED TRUE / FALSE / UNVERIFIED] - [Brief 1-sentence proof with specific source name]
+   * **Explanation:** [A concise, 3-sentence summary detailing exactly what is true, what is false, and the precise correction. Do not use generic market phrases unless backed by a specific timestamped quote].
+
+The JSON structure you return MUST be:
 {
-  "verdict": "REAL" or "FAKE",
+  "verdict": "REAL" | "FAKE" | "PARTIALLY TRUE" | "UNVERIFIED",
   "confidence": [integer 1-100],
-  "explanation": "[CRITICAL: Must be a highly concise, punchy 2-3 sentence summary. Reference specific web search findings that confirm or contradict the claims. Keep it short and readable for a UI card!]",
-  "corrected_fact": "[If fake or misleading, provide the CORRECT information found in the web results in 1-2 sentences.]",
+  "explanation": "[The full Markdown-formatted report following the structure above. Use actual newlines (\\n) for formatting]",
+  "corrected_fact": "[If fake/misleading/partially true, provide the CORRECT information found in the web results in 1-2 sentences. Else, leave empty.]",
   "sources_used": ["url1", "url2"],
   "data_points": {
      "labels": ["Human Written", "Factual Accuracy", "Logical Consistency", "Emotional Objectivity", "Scam/Risk Safety"],
@@ -309,7 +317,7 @@ Return ONLY extremely strict, valid JSON. No markdown fences.
     const { parsed, error: parseError } = await parseGeminiResponse(gemRes);
     if (parseError) return res.status(502).json({ error: parseError });
 
-    const verdict = parsed.verdict === 'FAKE' ? 'FAKE' : 'REAL';
+    const verdict = ['REAL', 'FAKE', 'PARTIALLY TRUE', 'UNVERIFIED'].includes(parsed.verdict) ? parsed.verdict : 'UNVERIFIED';
     const confidence = toSafeNum(parsed.confidence, 75);
 
     let explanation = typeof parsed.explanation === 'string' ? parsed.explanation : 'No explanation provided.';
@@ -319,7 +327,7 @@ Return ONLY extremely strict, valid JSON. No markdown fences.
       explanation += "\n\n✅ Verified using live web search results from DuckDuckGo, Wikipedia, and fact-check databases.";
     }
 
-    const corrected_fact = verdict === 'FAKE' && typeof parsed.corrected_fact === 'string' ? parsed.corrected_fact : '';
+    const corrected_fact = (verdict === 'FAKE' || verdict === 'PARTIALLY TRUE') && typeof parsed.corrected_fact === 'string' ? parsed.corrected_fact : '';
     const sources_used = Array.isArray(parsed.sources_used) ? parsed.sources_used.slice(0, 5) : [];
 
     // Normalize data_points

@@ -212,6 +212,8 @@ export default function ResultModal({ result, onClose }) {
 
   // Safely extract data
   const isFake = result.verdict === 'FAKE';
+  const isPartiallyTrue = result.verdict === 'PARTIALLY TRUE';
+  const isUnverified = result.verdict === 'UNVERIFIED';
   const confidence = result.confidence || 0;
   const explanation = result.explanation || 'No explanation provided.';
   const correctedFact = result.corrected_fact;
@@ -225,16 +227,17 @@ export default function ResultModal({ result, onClose }) {
   // Colors based on instruction
   const RED = '#ef4444';
   const GREEN = '#22c55e';
-  const COLOR = isFake ? RED : GREEN;
+  const ORANGE = '#f97316';
+  const YELLOW = '#eab308';
+  
+  let COLOR = GREEN;
+  if (isFake) COLOR = RED;
+  else if (isPartiallyTrue) COLOR = ORANGE;
+  else if (isUnverified) COLOR = YELLOW;
   
   // Theme Variables
-  const shadowGlow = isFake 
-    ? `0 0 20px rgba(239,68,68,0.12), 0 0 40px rgba(239,68,68,0.06)`
-    : `0 0 20px rgba(34,197,94,0.12), 0 0 40px rgba(34,197,94,0.06)`;
-
-  const borderGrad = isFake 
-    ? `linear-gradient(135deg, rgba(239,68,68,0.4), rgba(239,68,68,0.05))` 
-    : `linear-gradient(135deg, rgba(34,197,94,0.4), rgba(34,197,94,0.05))`;
+  const shadowGlow = `0 0 20px ${COLOR}20, 0 0 40px ${COLOR}0a`;
+  const borderGrad = `linear-gradient(135deg, ${COLOR}60, ${COLOR}08)`;
 
   // Entrance animation variations
   const variants = {
@@ -287,7 +290,11 @@ export default function ResultModal({ result, onClose }) {
               <div className="relative z-10 flex items-center gap-5">
                 <div>
                   <h2 className="text-4xl sm:text-5xl font-bold tracking-[4px] uppercase" style={{ color: COLOR, fontFamily: "'Bebas Neue', cursive" }}>
-                    {result.customTitle ? (isFake ? '❌ ' + result.customTitle : '✅ ' + result.customTitle) : (isFake ? '❌ FAKE DETECTED' : '✅ REAL')}
+                    {(() => {
+                      const prefix = isFake ? '❌ ' : isPartiallyTrue ? '⚠️ ' : isUnverified ? '🔍 ' : '✅ ';
+                      const fallbackText = isFake ? 'FAKE DETECTED' : isPartiallyTrue ? 'PARTIALLY TRUE' : isUnverified ? 'UNVERIFIED' : 'REAL';
+                      return prefix + (result.customTitle || fallbackText);
+                    })()}
                   </h2>
                   <div className="flex gap-2 mt-2">
                     {isFake && (
@@ -375,8 +382,8 @@ export default function ResultModal({ result, onClose }) {
                     </div>
                   </motion.div>
 
-                  {/* Corrected Fact (FAKE ONLY) */}
-                  {isFake && correctedFact && (
+                  {/* Corrected Fact (FAKE or PARTIALLY TRUE) */}
+                  {(isFake || isPartiallyTrue) && correctedFact && (
                     <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.6 }}>
                       <div className="p-5 rounded-2xl relative overflow-hidden"
                         style={{ background: 'rgba(34, 197, 94, 0.05)', border: '1px solid rgba(34, 197, 94, 0.2)' }}>

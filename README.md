@@ -58,7 +58,68 @@ TruthGuard AI features 7 specialized detection engines:
 
 TruthGuard AI uses a fully decoupled architecture optimized for real-time parallel data fetching and low-latency processing.
 
-### 1. High-Level System Architecture
+
+### 1. Character-Based System Flow Diagram
+```
++------------------------------------------------------------+
+|                  CLIENT (React/Vite Dashboard)             |
+|                                                            |
+|  [User Interface]   -->   [Three.js Neural Network Web]    |
+|         |                        |                         |
+|         v                        v                         |
+|  [Claim Form Input] -->   [Chart.js Forensic Radars/Bars]  |
++------------------------------------------------------------+
+                           |
+                           | (HTTP POST /api/verify/text)
+                           v
++------------------------------------------------------------+
+|                   BACKEND (Node.js/Express)                |
+|                                                            |
+|         +----------------------------------------+         |
+|         |           Express API Router           |         |
+|         +----------------------------------------+         |
+|                              |                             |
+|                              v                             |
+|         +----------------------------------------+         |
+|         |       Parallel Search Aggregator       |         |
+|         +----------------------------------------+         |
+|            /           |            \          \           |
+|           /            |             \          \          |
+|          v             v              v          v         |
++------------------------------------------------------------+
+     |                  |               |          |
+     | (Query)          | (Query)       | (Query)  | (Query)
+     v                  v               v          v
++------------+    +------------+    +-------+    +-----------+
+| DuckDuckGo |    |   Yahoo    |    | Wiki  |    | Fact Check|
+|   Search   |    |   Search   |    |  API  |    | Scrapers  |
++------------+    +------------+    +-------+    +-----------+
+     |                  |               |          |
+     |                  |               |          |
+     v                  v               v          v
++------------------------------------------------------------+
+|               Deduplication & Context Merge                |
+|                              |                             |
+|                              v                             |
+|                 Structured Grounding Prompt                |
+|                              |                             |
+|                              v                             |
+|                    Gemini AI Orchestrator                  |
+|                              |                             |
+|                              v                             |
+|                 JSON Parse & Verdict Mapping               |
++------------------------------------------------------------+
+                           |
+                           | (JSON API Response)
+                           v
++------------------------------------------------------------+
+|                    CLIENT (Visual Render)                  |
+|                                                            |
+|   [4-State UI Cards]  <--  [Source List] <-- [Radar Chart] |
++------------------------------------------------------------+
+```
+
+### 2. High-Level System Architecture (Graph View)
 ```mermaid
 graph LR
     subgraph Client ["Frontend (React/Vite)"]

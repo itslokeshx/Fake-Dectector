@@ -14,27 +14,12 @@
 
 ---
 
-## 🌐 Live Application
-
-🚀 **Try the Deployed App Live:** [https://fake-dectector-frontend.vercel.app/](https://fake-dectector-frontend.vercel.app/)
-
-*   **Frontend Deployed on:** [Vercel](https://vercel.com/)
-*   **Backend Deployed on:** [Render](https://render.com/)
-
----
-
 ## 🌟 Overview
 
 **TruthGuard AI** is a state-of-the-art forensic analysis platform designed to combat digital misinformation and AI-generated deception. Built using a fully decoupled **Frontend / Backend Architecture**, TruthGuard combines **Google's Gemini 3.5** models with a custom, zero-dependency, real-time web search fact-checking engine. It provides a centralized dashboard for verifying viral news, deepfake audio, fraudulent job postings, and scientific research.
 
 > [!IMPORTANT]
 > This suite runs entirely on free public APIs and advanced web scraping pipelines, making real-time fact-checking accessible without expensive API keys or subscriptions.
-
----
-
-## 🎥 Demo Video
-
-👉 [Watch Demo Video](https://drive.google.com/file/d/1sGNdWI5lcVmBTA6u5bx9k9ct7RX4ZFk8/view?t=7s)
 
 ---
 
@@ -243,7 +228,7 @@ Follow these steps to run the decoupled TruthGuard AI architecture locally:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/Thuyavan28/Fake-Dectector.git
+git clone <repository-url>
 cd Fake-Dectector
 ```
 

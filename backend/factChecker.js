@@ -109,9 +109,9 @@ export async function duckDuckGoSearch(statement) {
     console.error('⚠️ DDG search error:', e.message);
   }
 
-  // If both DDG attempts returned no results (due to captchas/blocking), run Yahoo Search as the robust fallback
-  console.log(`⚠️ DDG search returned 0 results. Falling back to Yahoo Search...`);
-  return await yahooSearch(statement);
+  // If both DDG attempts returned no results (due to captchas/blocking), return empty array
+  console.log(`⚠️ DDG search returned 0 results.`);
+  return ddgResults;
 }
 
 // ─── Keyword/Noun-phrase Extraction ───────────────────────────────────────────
@@ -457,6 +457,11 @@ export async function gatherWebContext(text) {
       allResults.ddgResults.push(...r);
     })),
 
+    // Yahoo search for each claim
+    ...claims.map(claim => yahooSearch(claim).then(r => {
+      allResults.ddgResults.push(...r);
+    })),
+
     // Wikipedia for key terms
     wikipediaSearch(primaryClaim).then(r => {
       allResults.wikiResults.push(...r);
@@ -480,17 +485,19 @@ export async function gatherWebContext(text) {
   // Wait for all searches with a timeout (don't let it hang forever)
   await Promise.allSettled(searchPromises);
 
-  // Deduplicate DDG results by URL
+  // Normalize and deduplicate results by URL
   const seenUrls = new Set();
   allResults.ddgResults = allResults.ddgResults.filter(r => {
-    if (seenUrls.has(r.url)) return false;
-    seenUrls.add(r.url);
+    if (!r.url) return false;
+    const normUrl = r.url.toLowerCase().trim().replace(/https?:\/\/(www\.)?/, '');
+    if (seenUrls.has(normUrl)) return false;
+    seenUrls.add(normUrl);
     return true;
   }).slice(0, 15);
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\n🌐 ═══ Web Search Complete (${elapsed}s) ═══`);
-  console.log(`   DDG: ${allResults.ddgResults.length} | Wiki: ${allResults.wikiResults.length} | Fact-Check Sites: ${allResults.factCheckResults.length} | Google FC: ${allResults.googleFactChecks.length}`);
+  console.log(`   Web Results: ${allResults.ddgResults.length} | Wiki: ${allResults.wikiResults.length} | Fact-Check Sites: ${allResults.factCheckResults.length} | Google FC: ${allResults.googleFactChecks.length}`);
 
   return allResults;
 }
@@ -499,9 +506,9 @@ export async function gatherWebContext(text) {
 export function formatWebContextForPrompt(webContext) {
   const sections = [];
 
-  // DuckDuckGo Results
+  // Web Search Results
   if (webContext.ddgResults.length > 0) {
-    sections.push('### Web Search Results (DuckDuckGo)');
+    sections.push('### Live Web Search Results');
     webContext.ddgResults.forEach((r, i) => {
       sections.push(`${i + 1}. **${r.title}**`);
       sections.push(`   URL: ${r.url}`);

@@ -67,25 +67,105 @@ export async function duckDuckGoSearch(statement) {
   }
 }
 
+// ─── Keyword/Noun-phrase Extraction ───────────────────────────────────────────
+export function extractKeywords(text) {
+  if (!text) return "";
+  // Remove punctuation
+  const clean = text.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, "").replace(/\s{2,}/g, " ");
+  const words = clean.split(/\s+/).filter(w => w.length > 1);
+  
+  // Stopwords list
+  const stopwords = new Set([
+    'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
+    'a', 'an', 'the', 'and', 'but', 'or', 'as', 'if', 'of', 'at', 'by', 'for', 'with', 'about', 'against',
+    'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up', 'down',
+    'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when',
+    'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such',
+    'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can', 'will', 'just',
+    'should', 'now', 'everyone', 'someone', 'anyone', 'everything', 'something', 'anything'
+  ]);
+  
+  const keywords = words.filter(w => !stopwords.has(w.toLowerCase()));
+  
+  if (keywords.length > 0) {
+    return keywords.slice(0, 4).join(' '); // Take up to 4 keywords
+  }
+  return text;
+}
+
+// Helper to extract the introduction plus paragraphs containing query keywords
+function extractRelevantWikipediaSnippet(fullText, query) {
+  if (!fullText) return "";
+  
+  // Get introduction (first 400 chars)
+  let intro = fullText.substring(0, 400);
+  
+  // Split the rest of the text into paragraphs
+  const paragraphs = fullText.split('\n').map(p => p.trim()).filter(p => p.length > 20);
+  
+  // Find paragraphs containing the query terms (case-insensitive)
+  const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2);
+  const scoredParagraphs = [];
+  
+  for (const para of paragraphs) {
+    // If the paragraph is already part of the intro, skip
+    if (intro.includes(para.substring(0, 50))) continue;
+    
+    // Calculate score: number of unique query terms present in paragraph
+    const score = queryTerms.reduce((sum, term) => sum + (para.toLowerCase().includes(term) ? 1 : 0), 0);
+    if (score > 0) {
+      scoredParagraphs.push({ para, score });
+    }
+  }
+  
+  // Sort by score descending (highest matches first)
+  scoredParagraphs.sort((a, b) => b.score - a.score);
+  
+  // Join the intro and the top matched paragraphs
+  let result = intro;
+  if (scoredParagraphs.length > 0) {
+    result += "\n\n[Relevant Section(s) from Article]:\n" + scoredParagraphs.slice(0, 2).map(item => item.para).join("\n\n");
+  }
+  
+  return result.substring(0, 1200); // Limit to 1200 characters total to stay concise
+}
+
 // ─── 2. Wikipedia Knowledge Lookup ────────────────────────────────────────────
 export async function wikipediaSearch(term) {
   const headers = {
     'User-Agent': 'TruthGuardFactChecker/2.0 (lokeshvijayraina@gmail.com; Academic Project)'
   };
 
-  // First search for relevant articles
-  const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(term)}&srlimit=3&format=json`;
-  try {
-    const searchRes = await fetch(searchUrl, { headers });
-    const searchData = await searchRes.json();
-    const titles = (searchData.query?.search || []).map(s => s.title);
+  // Search using both the raw query and keyword-focused query to merge results
+  // Prioritize the keyword-focused query (first in the array) to put cleaner terms first in the Set
+  const keywords = extractKeywords(term);
+  const searchQueries = [];
+  if (keywords && keywords !== term) {
+    searchQueries.push(keywords);
+  }
+  searchQueries.push(term);
 
-    if (titles.length === 0) return [];
+  const allTitles = new Set();
+
+  try {
+    for (const q of searchQueries) {
+      const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=3&format=json`;
+      const searchRes = await fetch(searchUrl, { headers });
+      const searchData = await searchRes.json();
+      const titles = (searchData.query?.search || []).map(s => s.title);
+      for (const t of titles) {
+        allTitles.add(t);
+      }
+    }
+
+    const uniqueTitles = Array.from(allTitles);
+    if (uniqueTitles.length === 0) return [];
 
     const summaries = [];
-    for (const title of titles.slice(0, 2)) {
+    for (const title of uniqueTitles.slice(0, 4)) {
       try {
-        const queryUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json`;
+        // Query the full extract (no exintro) to scan the entire article text for the keyword
+        const queryUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext&titles=${encodeURIComponent(title)}&format=json`;
         const res = await fetch(queryUrl, { headers });
         const data = await res.json();
         
@@ -94,9 +174,10 @@ export async function wikipediaSearch(term) {
           const pageId = Object.keys(pages)[0];
           const page = pages[pageId];
           if (page && page.extract) {
+            const refinedExtract = extractRelevantWikipediaSnippet(page.extract, keywords || term);
             summaries.push({
               title: page.title,
-              extract: page.extract.substring(0, 1000), // Get richer intro context
+              extract: refinedExtract,
               url: `https://en.wikipedia.org/wiki/${encodeURIComponent(page.title)}`
             });
           }
@@ -151,7 +232,9 @@ export async function scrapeFactCheckSite(query, site = 'politifact.com') {
         const title = $(el).find('a').first().text().trim() || $(el).find('.m-statement__quote').text().trim();
         const link = $(el).find('a').first().attr('href') || '';
         const rating = $(el).find('.m-result__rating, .c-image__original, .m-statement__meter img').attr('alt') || '';
-        if (title && title.length > 10) {
+        
+        // CRITICAL: Ensure this is a real fact-check or article, NOT a personality/person profile link
+        if (title && title.length > 10 && (link.includes('/factchecks/') || link.includes('/article/'))) {
           results.push({
             title: title.substring(0, 200),
             url: link.startsWith('http') ? link : `https://www.politifact.com${link}`,
@@ -166,7 +249,9 @@ export async function scrapeFactCheckSite(query, site = 'politifact.com') {
         const title = $(el).find('a').first().text().trim() || $(el).find('h3, h2').text().trim();
         const link = $(el).find('a').first().attr('href') || '';
         const rating = $(el).find('.rating_title_wrap, .result_rating').text().trim();
-        if (title && title.length > 10) {
+        
+        // CRITICAL: Ensure this is an actual fact check, news article, or brief
+        if (title && title.length > 10 && (link.includes('/fact-check/') || link.includes('/news/') || link.includes('/brief/'))) {
           results.push({
             title: title.substring(0, 200),
             url: link.startsWith('http') ? link : `https://www.snopes.com${link}`,
@@ -179,7 +264,9 @@ export async function scrapeFactCheckSite(query, site = 'politifact.com') {
       $('article, .post, .entry').slice(0, 5).each((i, el) => {
         const title = $(el).find('a').first().text().trim() || $(el).find('h2, h3').text().trim();
         const link = $(el).find('a').first().attr('href') || '';
-        if (title && title.length > 10) {
+        
+        // CRITICAL: Filter out author profiles or category listings
+        if (title && title.length > 10 && !link.includes('/author/') && !link.includes('/category/')) {
           results.push({
             title: title.substring(0, 200),
             url: link,

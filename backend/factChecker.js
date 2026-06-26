@@ -202,11 +202,19 @@ export async function wikipediaSearch(term) {
   const allTitles = new Set();
 
   try {
-    for (const q of searchQueries) {
-      const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=3&format=json`;
-      const searchRes = await fetch(searchUrl, { headers });
-      const searchData = await searchRes.json();
-      const titles = (searchData.query?.search || []).map(s => s.title);
+    const searchPromises = searchQueries.map(async (q) => {
+      try {
+        const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=3&format=json`;
+        const searchRes = await fetch(searchUrl, { headers });
+        const searchData = await searchRes.json();
+        return (searchData.query?.search || []).map(s => s.title);
+      } catch (e) {
+        return [];
+      }
+    });
+
+    const results = await Promise.all(searchPromises);
+    for (const titles of results) {
       for (const t of titles) {
         allTitles.add(t);
       }
@@ -215,8 +223,7 @@ export async function wikipediaSearch(term) {
     const uniqueTitles = Array.from(allTitles);
     if (uniqueTitles.length === 0) return [];
 
-    const summaries = [];
-    for (const title of uniqueTitles.slice(0, 4)) {
+    const summaryPromises = uniqueTitles.slice(0, 4).map(async (title) => {
       try {
         // Query the full extract (no exintro) to scan the entire article text for the keyword
         const queryUrl = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext&titles=${encodeURIComponent(title)}&format=json`;
@@ -229,18 +236,20 @@ export async function wikipediaSearch(term) {
           const page = pages[pageId];
           if (page && page.extract) {
             const refinedExtract = extractRelevantWikipediaSnippet(page.extract, keywords || term);
-            summaries.push({
+            return {
               title: page.title,
               extract: refinedExtract,
               url: `https://en.wikipedia.org/wiki/${encodeURIComponent(page.title)}`
-            });
+            };
           }
         }
       } catch (e) {
         // Skip individual article errors
       }
-      await delay(200);
-    }
+      return null;
+    });
+
+    const summaries = (await Promise.all(summaryPromises)).filter(Boolean);
 
     console.log(`📚 Wikipedia: Found ${summaries.length} articles for: "${term.substring(0, 50)}..."`);
     return summaries;
@@ -336,7 +345,6 @@ export async function scrapeFactCheckSite(query, site = 'politifact.com') {
     console.error(`⚠️ Scrape failed for ${site}:`, e.message?.substring(0, 100));
   }
 
-  await delay(1000); // Be respectful of rate limits
   return results;
 }
 

@@ -9,9 +9,52 @@ import { load } from 'cheerio';
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ─── Yahoo Search Fallback ───────────────────────────────────────────────────
+export async function yahooSearch(statement) {
+  const url = `https://search.yahoo.com/search?p=${encodeURIComponent(statement)}`;
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+  };
+
+  try {
+    const response = await axios.get(url, { headers, timeout: 5000 });
+    if (response.status === 200) {
+      const $ = load(response.data);
+      const results = [];
+      $('.algo').each((i, el) => {
+        const a = $(el).find('a').first();
+        const title = $(el).find('h3').text().trim() || a.text().trim();
+        const link = a.attr('href') || '';
+        const snippet = $(el).find('.compText').text().trim();
+        
+        if (title && link) {
+          let realUrl = link;
+          try {
+            if (link.includes('/RU=')) {
+              const part = link.split('/RU=')[1].split('/RK=')[0];
+              realUrl = decodeURIComponent(part);
+            }
+          } catch (e) {}
+          results.push({
+            title: title.replace(/\s+/g, ' '),
+            url: realUrl,
+            snippet: snippet.replace(/\s+/g, ' ').substring(0, 300)
+          });
+        }
+      });
+      console.log(`🔍 Yahoo Search: Found ${results.length} results for: "${statement.substring(0, 50)}..."`);
+      return results;
+    }
+  } catch (e) {
+    console.error('⚠️ Yahoo Search error:', e.message);
+  }
+  return [];
+}
+
 // ─── 1. DuckDuckGo Search ─────────────────────────────────────────────────────
 export async function duckDuckGoSearch(statement) {
-  // Query raw statement instead of appending fact check suffixes (which break positive news)
   const query = statement;
   const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
   const headers = {
@@ -21,11 +64,12 @@ export async function duckDuckGoSearch(statement) {
     'Connection': 'keep-alive'
   };
 
+  let ddgResults = [];
+
   try {
     const response = await axios.get(url, { headers, timeout: 5000 });
     if (response.status === 200 && response.data.includes('result__body')) {
       const $ = load(response.data);
-      const results = [];
       $('.result__body').each((i, el) => {
         const title = $(el).find('.result__title').text().trim();
         let link = $(el).find('.result__url').text().trim();
@@ -34,18 +78,18 @@ export async function duckDuckGoSearch(statement) {
         }
         const snippet = $(el).find('.result__snippet').text().trim();
         if (title && link) {
-          results.push({
+          ddgResults.push({
             title: title.replace(/\s+/g, ' '),
             url: link,
             snippet: snippet.replace(/\s+/g, ' ').substring(0, 300)
           });
         }
       });
-      console.log(`🔍 DDG HTML: Found ${results.length} results for: "${statement.substring(0, 60)}..."`);
-      if (results.length > 0) return results;
+      console.log(`🔍 DDG HTML: Found ${ddgResults.length} results for: "${statement.substring(0, 60)}..."`);
+      if (ddgResults.length > 0) return ddgResults;
     }
   } catch (e) {
-    // Ignore and fallback to scraping library
+    // Ignore and fallback
   }
 
   try {
@@ -53,18 +97,21 @@ export async function duckDuckGoSearch(statement) {
       safeSearch: SafeSearchType.MODERATE
     });
 
-    const results = (searchResults.results || []).slice(0, 12).map(r => ({
+    ddgResults = (searchResults.results || []).slice(0, 12).map(r => ({
       title: r.title || '',
       url: r.url || r.href || '',
       snippet: (r.description || r.body || '').substring(0, 300)
     }));
 
-    console.log(`🔍 DDG Scrape (Fallback): Found ${results.length} results for: "${statement.substring(0, 60)}..."`);
-    return results;
+    console.log(`🔍 DDG Scrape (Fallback): Found ${ddgResults.length} results for: "${statement.substring(0, 60)}..."`);
+    if (ddgResults.length > 0) return ddgResults;
   } catch (e) {
     console.error('⚠️ DDG search error:', e.message);
-    return [];
   }
+
+  // If both DDG attempts returned no results (due to captchas/blocking), run Yahoo Search as the robust fallback
+  console.log(`⚠️ DDG search returned 0 results. Falling back to Yahoo Search...`);
+  return await yahooSearch(statement);
 }
 
 // ─── Keyword/Noun-phrase Extraction ───────────────────────────────────────────

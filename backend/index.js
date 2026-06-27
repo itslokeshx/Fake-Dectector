@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { gatherWebContext, formatWebContextForPrompt, gatherLightWebContext, formatLightWebContext } from './factChecker.js';
-import { callGroqFastVerdict, isGroqAvailable } from './groqClient.js';
+import { callGroqFastVerdict, isGroqAvailable, groqKeyCount } from './groqClient.js';
 dotenv.config();
 
 const app = express();
@@ -193,7 +193,7 @@ async function parseGeminiResponse(res) {
 
 // ─── Warmup endpoint ──────────────────────────────────────────────────────────
 app.get('/api/warmup', (req, res) => {
-  res.json({ warmed: true, keys: API_KEYS.length, model: MODEL, groq: isGroqAvailable() });
+  res.json({ warmed: true, gemini_keys: API_KEYS.length, model: MODEL, groq: isGroqAvailable(), groq_keys: groqKeyCount() });
 });
 
 // ─── POST /api/analyze — Fake news detection (Groq Fast Path + Gemini Fallback) ──

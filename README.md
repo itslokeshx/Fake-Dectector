@@ -271,6 +271,28 @@ The frontend will run at `http://localhost:5173` (or `5174`) and automatically p
 
 ---
 
+## 🌐 Production Deployment (Vercel & Render)
+
+This application is designed to be easily hosted in a decoupled state:
+
+### 1. Backend (Render)
+- Deploy your web service pointing to the project repository.
+- Set **Root Directory** to `backend`.
+- Build Command: `npm install`
+- Start Command: `node index.js`
+- Set the environment variables (`GEMINI_API_KEY_1/2/3`, `GROQ_API_KEY_1/2/3`, `OPENWEATHER_API_KEY`, and `FRONTEND_URL` pointing to your Vercel domain).
+
+### 2. Frontend (Vercel)
+- Deploy your project on Vercel.
+- Set **Root Directory** to `frontend`.
+- Vercel auto-configures the Vite preset (Build: `npm run build`, Output: `dist`).
+- Set the Environment Variable `VITE_API_URL` to your Render service URL (e.g. `https://your-backend.onrender.com`).
+
+> [!TIP]
+> For a detailed, step-by-step walkthrough of production setup, environment configurations, and CORS troubleshooting, refer to [hosting_guide.md](file:///home/loki/.gemini/antigravity/brain/ff990e02-25a7-47fa-b395-f2436de75f02/artifacts/hosting_guide.md).
+
+---
+
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.

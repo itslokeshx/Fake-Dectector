@@ -16,10 +16,10 @@
 
 ## 🌟 Overview
 
-**TruthGuard AI** is a state-of-the-art forensic analysis platform designed to combat digital misinformation and AI-generated deception. Built using a fully decoupled **Frontend / Backend Architecture**, TruthGuard combines **Google's Gemini 3.5** models with a custom, zero-dependency, real-time web search fact-checking engine. It provides a centralized dashboard for verifying viral news, deepfake audio, fraudulent job postings, and scientific research.
+**TruthGuard AI** is a state-of-the-art forensic analysis platform designed to combat digital misinformation and AI-generated deception. Built using a fully decoupled **Frontend / Backend Architecture**, TruthGuard combines **Groq Llama 3.3-70B** (for sub-3-second real-time fact-checking) with **Google's Gemini 3.5** models (for fallback and specialized multi-modal tasks). It features a real-time web search fact-checking engine and provides a centralized dashboard for verifying viral news, deepfake audio, fraudulent job postings, and scientific research.
 
 > [!IMPORTANT]
-> This suite runs entirely on free public APIs and advanced web scraping pipelines, making real-time fact-checking accessible without expensive API keys or subscriptions.
+> This suite implements a hybrid Dual-LLM design: an ultra-fast path powered by Groq API + Llama 3.3-70B, and a comprehensive fallback/heavy pipeline powered by Gemini 3.5.
 
 ---
 
@@ -29,13 +29,13 @@ TruthGuard AI features 7 specialized detection engines:
 
 | Module | Engine | Verification Pipeline |
 | :--- | :--- | :--- |
-| **📰 Fake News** | Advanced AI | Live search grounding (DuckDuckGo + Wikipedia + Snopes + PolitiFact) + Gemini analysis. |
-| **🖼️ AI Image** | Vision AI | Pixel forensics & visual artifact analysis to flag synthetic or manipulated images. |
+| **📰 Fake News** | Dual-LLM (Groq Llama 3.3 / Gemini) | Ultra-fast search grounding (Yahoo/DDG + Wikipedia + Google FC) + Groq/Llama fast path (< 3s). Gemini acts as automatic fallback. |
+| **🖼️ AI Image** | Vision AI (Gemini) | Pixel forensics & visual artifact analysis to flag synthetic or manipulated images. |
 | **🎤 Deepfake Voice** | Audio Analysis | Pitch, frequency, and spectral pattern detection via Web Audio API. |
-| **💼 Fake Job** | Pattern AI | Scrutinizes salary anomalies, domain legitimacy, and urgent emotional triggers. |
+| **💼 Fake Job** | Pattern AI (Gemini) | Scrutinizes salary anomalies, domain legitimacy, and urgent emotional triggers. |
 | **🕵️ Fraud Behavior** | Biometrics AI | Analyzes mouse dynamics, typing velocity, and device patterns for bots/fraud. |
-| **🔬 Fake Research** | Scientific AI | Audits research claims against citations, sample sizes, and methodology credibility. |
-| **🌤️ Weather Check** | Hybrid AI | Cross-references forecasts against real-time OpenWeather data. |
+| **🔬 Fake Research** | Scientific AI (Gemini) | Audits research claims against citations, sample sizes, and methodology credibility. |
+| **🌤️ Weather Check** | Hybrid AI (Gemini) | Cross-references forecasts against real-time OpenWeather data. |
 
 ---
 
@@ -115,7 +115,7 @@ graph LR
     subgraph Server ["Backend (Node.js/Express)"]
         API[Express Router]
         Ground[Search Grounding Engine]
-        Model[Gemini LLM Orchestrator]
+        Model[Dual-LLM Orchestrator: Groq / Gemini Fallback]
     end
     subgraph External ["External Fact Sources"]
         Search[DuckDuckGo & Yahoo]
@@ -133,7 +133,7 @@ graph LR
     API -->|7. JSON Report| UI
 ```
 
-### 2. Multi-Engine Verification Data Pipeline
+### 3. Multi-Engine Verification Data Pipeline
 The **Fake News Engine** implements a smart, parallel execution workflow to minimize latency and guarantee source coverage:
 
 ```mermaid
@@ -145,7 +145,7 @@ flowchart TD
         direction LR
         DDG[DuckDuckGo Scraper]
         Yahoo[Yahoo Link Scraper]
-        Wiki[Wikipedia TF-IDF Parser]
+        Wiki[Wikipedia Parser]
         FC[Snopes/PolitiFact/FactCheck.org]
         GFC[Google Fact Check Tools API]
     end
@@ -161,8 +161,11 @@ flowchart TD
     GFC --> Context
     
     Context --> Prompt[6. Structured Prompt Synthesis]
-    Prompt --> Gemini[7. Gemini Reasoning & Output Parse]
-    Gemini --> Report[8. 4-State UI Report Render]
+    Prompt --> Decision{Is Groq Available?}
+    Decision -->|Yes| Groq[7a. Groq/Llama 3.3 Fast Path]
+    Decision -->|No / Fails| GeminiFallback[7b. Gemini Fallback Path]
+    Groq --> Report[8. 4-State UI Report Render]
+    GeminiFallback --> Report
 ```
 
 ---
@@ -205,7 +208,7 @@ The fact-checking pipeline enforces elite analytical rules:
 ```bash
 Fake-Dectector/
 ├── frontend/        # React 18, Vite, Tailwind CSS, Three.js, Chart.js (Vercel)
-└── backend/         # Node.js, Express.js, Google Gemini SDK, Axios, Cheerio (Render)
+└── backend/         # Node.js, Express.js, Groq SDK, Google Gemini SDK, Axios, Cheerio (Render)
 ```
 
 ### **Frontend**
@@ -216,8 +219,8 @@ Fake-Dectector/
 
 ### **Backend**
 - **Runtime**: Node.js & Express.js
-- **AI Core**: Google Gemini 3.5 Flash / 3.1 Flash-lite (Rotated Key Chains)
-- **Search & Scraping**: Axios, Cheerio, public Wikipedia API, DuckDuckGo Lite, Google Fact Check API
+- **AI Core**: Groq SDK + Llama 3.3-70B (Primary Fast Path, 3x Rotated Keys) & Google Gemini 3.5 Flash (Fallback / Multi-modal, 3x Rotated Keys)
+- **Search & Scraping**: Axios, Cheerio, public Wikipedia API, DuckDuckGo Lite, Yahoo Search Scraper, Google Fact Check API
 - **Weather API**: OpenWeatherMap integration
 
 ---
@@ -244,6 +247,9 @@ Create a `backend/.env` file:
 GEMINI_API_KEY_1=your_google_gemini_api_key_1
 GEMINI_API_KEY_2=your_google_gemini_api_key_2 (optional backup)
 GEMINI_API_KEY_3=your_google_gemini_api_key_3 (optional backup)
+GROQ_API_KEY_1=your_groq_api_key_1
+GROQ_API_KEY_2=your_groq_api_key_2 (optional backup)
+GROQ_API_KEY_3=your_groq_api_key_3 (optional backup)
 OPENWEATHER_API_KEY=your_openweather_api_key
 PORT=3000
 ```

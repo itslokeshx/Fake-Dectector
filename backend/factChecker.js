@@ -559,3 +559,79 @@ export function formatWebContextForPrompt(webContext) {
 
   return contextText;
 }
+
+// ─── 8. Lightweight Web Context (Fast Path — for Groq/Llama) ─────────────────
+// Only the 3 fastest sources, single query each. Target: < 2 seconds.
+export async function gatherLightWebContext(text) {
+  const startTime = Date.now();
+  console.log('\n⚡ ═══ Starting FAST Web Search Pipeline ═══');
+
+  const shortQuery = text.substring(0, 150).replace(/\n/g, ' ').trim();
+  const keywords = extractKeywords(text);
+
+  const allResults = {
+    ddgResults: [],
+    wikiResults: [],
+    factCheckResults: [],
+    googleFactChecks: []
+  };
+
+  // Race all 3 sources against a 3-second global timeout
+  const searchPromises = [
+    // Google Fact Check API — fastest, ~0.5s
+    googleFactCheckSearch(shortQuery)
+      .then(r => { allResults.googleFactChecks.push(...r); })
+      .catch(() => {}),
+
+    // Wikipedia — 1 query, ~1s
+    wikipediaSearch(keywords || shortQuery)
+      .then(r => { allResults.wikiResults.push(...r.slice(0, 2)); })
+      .catch(() => {}),
+
+    // DuckDuckGo — 1 query only (not 3!)
+    duckDuckGoSearch(shortQuery)
+      .then(r => { allResults.ddgResults.push(...r.slice(0, 5)); })
+      .catch(() => {})
+  ];
+
+  // Global timeout: if any source is too slow, don't wait
+  const timeout = new Promise(resolve => setTimeout(resolve, 3000));
+  await Promise.race([
+    Promise.allSettled(searchPromises),
+    timeout
+  ]);
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  console.log(`⚡ ═══ Fast Web Search Complete (${elapsed}s) ═══`);
+  console.log(`   Web: ${allResults.ddgResults.length} | Wiki: ${allResults.wikiResults.length} | Google FC: ${allResults.googleFactChecks.length}`);
+
+  return allResults;
+}
+
+// ─── 9. Format Light Web Context (Compact — for Groq prompts) ────────────────
+export function formatLightWebContext(webContext) {
+  const sections = [];
+
+  if (webContext.googleFactChecks?.length > 0) {
+    sections.push('### Fact-Check Results');
+    webContext.googleFactChecks.forEach(r => {
+      sections.push(`- "${r.title}" — Rating: ${r.rating} (${r.source})`);
+    });
+  }
+
+  if (webContext.wikiResults?.length > 0) {
+    sections.push('### Wikipedia');
+    webContext.wikiResults.forEach(r => {
+      sections.push(`**${r.title}**: ${r.extract?.substring(0, 400) || ''}`);
+    });
+  }
+
+  if (webContext.ddgResults?.length > 0) {
+    sections.push('### Web Results');
+    webContext.ddgResults.slice(0, 5).forEach((r, i) => {
+      sections.push(`${i + 1}. ${r.title} — ${r.snippet?.substring(0, 150) || ''}`);
+    });
+  }
+
+  return sections.join('\n') || '';
+}

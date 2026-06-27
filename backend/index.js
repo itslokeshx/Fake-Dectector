@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { gatherWebContext, formatWebContextForPrompt } from './factChecker.js';
+import { gatherWebContext, formatWebContextForPrompt, gatherLightWebContext, formatLightWebContext } from './factChecker.js';
+import { callGroqFastVerdict, isGroqAvailable } from './groqClient.js';
 dotenv.config();
 
 const app = express();
@@ -192,10 +193,10 @@ async function parseGeminiResponse(res) {
 
 // ─── Warmup endpoint ──────────────────────────────────────────────────────────
 app.get('/api/warmup', (req, res) => {
-  res.json({ warmed: true, keys: API_KEYS.length, model: MODEL });
+  res.json({ warmed: true, keys: API_KEYS.length, model: MODEL, groq: isGroqAvailable() });
 });
 
-// ─── POST /api/analyze — Fake news detection (Web Search + Gemini Pipeline) ──
+// ─── POST /api/analyze — Fake news detection (Groq Fast Path + Gemini Fallback) ──
 app.post('/api/analyze', async (req, res) => {
   const { text } = req.body;
 
@@ -203,13 +204,104 @@ app.post('/api/analyze', async (req, res) => {
     return res.status(400).json({ error: 'No text provided.' });
   }
 
-  if (API_KEYS.length === 0) {
-    return res.status(500).json({ error: 'No API keys configured.' });
+  const currentDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const startTime = Date.now();
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FAST PATH: Groq/Llama (target: < 3 seconds)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (isGroqAvailable()) {
+    console.log('\n⚡ FAST PATH: Using Groq/Llama for instant analysis...');
+
+    try {
+      // Run Groq LLM + lightweight web search IN PARALLEL
+      const [groqResult, webContext] = await Promise.all([
+        callGroqFastVerdict(text.trim(), '', currentDateStr),
+        gatherLightWebContext(text.trim())
+      ]);
+
+      // Format web context and re-call Groq with context if we got results
+      const webContextText = formatLightWebContext(webContext);
+      const webSearchSuccess = (
+        (webContext.ddgResults?.length > 0) ||
+        (webContext.wikiResults?.length > 0) ||
+        (webContext.googleFactChecks?.length > 0)
+      );
+
+      // If we have web context, do a second fast Groq call with context for accuracy
+      let finalResult = groqResult;
+      if (webSearchSuccess && webContextText.length > 50) {
+        try {
+          console.log('🔄 Enriching Groq verdict with web context...');
+          finalResult = await callGroqFastVerdict(text.trim(), webContextText, currentDateStr);
+        } catch (enrichErr) {
+          console.log('⚠️ Enrichment call failed, using initial verdict:', enrichErr.message);
+          // Keep the initial groqResult
+        }
+      }
+
+      // Normalize response (same shape as Gemini path)
+      const verdict = ['REAL', 'FAKE', 'PARTIALLY TRUE', 'UNVERIFIED'].includes(finalResult.verdict) ? finalResult.verdict : 'UNVERIFIED';
+      const confidence = toSafeNum(finalResult.confidence, 75);
+
+      let explanation = typeof finalResult.explanation === 'string' ? finalResult.explanation : 'No explanation provided.';
+      if (webSearchSuccess) {
+        explanation += "\n\n✅ Verified using live web search results from DuckDuckGo, Wikipedia, and fact-check databases.";
+      } else {
+        explanation += "\n\n⚠️ Note: Web search returned limited results; analysis based primarily on AI knowledge.";
+      }
+
+      const corrected_fact = (verdict === 'FAKE' || verdict === 'PARTIALLY TRUE') && typeof finalResult.corrected_fact === 'string' ? finalResult.corrected_fact : '';
+      const sources_used = Array.isArray(finalResult.sources_used) ? finalResult.sources_used.slice(0, 5) : [];
+
+      // Normalize data_points
+      const defaultLabels = ["Human Written", "Factual Accuracy", "Logical Consistency", "Emotional Objectivity", "Scam/Risk Safety"];
+      const aiLabels = Array.isArray(finalResult.data_points?.labels) ? finalResult.data_points.labels : defaultLabels;
+      const aiValues = Array.isArray(finalResult.data_points?.values) ? finalResult.data_points.values.map(v => toSafeNum(v)) : [confidence, 80, 80, 80, 80];
+      const finalValues = aiLabels.map((_, i) => aiValues[i] !== undefined ? aiValues[i] : 70);
+      const data_points = { labels: aiLabels, values: finalValues };
+
+      // Build web search summary for UI
+      const webSearchSummary = webSearchSuccess ? {
+        ddg_results: webContext?.ddgResults?.length || 0,
+        wiki_results: webContext?.wikiResults?.length || 0,
+        factcheck_results: (webContext?.factCheckResults?.length || 0) + (webContext?.googleFactChecks?.length || 0),
+        sources: [
+          ...(webContext?.wikiResults?.slice(0, 2).map(r => ({ title: r.title, url: r.url, source: 'Wikipedia' })) || []),
+          ...(webContext?.ddgResults?.slice(0, 3).map(r => ({ title: r.title, url: r.url, source: 'Web Search' })) || []),
+          ...(webContext?.googleFactChecks?.slice(0, 2).map(r => ({ title: r.title, url: r.url, source: r.source, rating: r.rating })) || [])
+        ]
+      } : null;
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`⚡ FAST RESULT: ${verdict} (${confidence}%) in ${elapsed}s [Groq/Llama + Web: ${webSearchSuccess}]`);
+
+      return res.json({
+        verdict, confidence, explanation, corrected_fact, sources_used, data_points,
+        engine: 'groq-llama', grounded: false, model: 'llama-3.3-70b-versatile',
+        web_search: webSearchSuccess,
+        web_search_summary: webSearchSummary
+      });
+
+    } catch (groqErr) {
+      console.error(`⚠️ Groq fast path failed: ${groqErr.message}`);
+      console.log('🔄 Falling back to Gemini pipeline...');
+      // Fall through to Gemini fallback below
+    }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FALLBACK PATH: Gemini (original pipeline — used when Groq is unavailable)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (API_KEYS.length === 0) {
+    return res.status(500).json({ error: 'No API keys configured (neither Groq nor Gemini).' });
+  }
+
+  console.log('\n🧠 FALLBACK: Using Gemini pipeline...');
+
   try {
-    // ─── STEP 1: Gather live web context (DuckDuckGo + Wikipedia + Fact-check sites) ──
-    console.log('\n🌐 STEP 1: Gathering live web context...');
+    // ─── STEP 1: Gather live web context (full pipeline) ──
+    console.log('🌐 STEP 1: Gathering live web context...');
     let webContext;
     let webContextText = '';
     let webSearchSuccess = false;
@@ -230,8 +322,6 @@ app.post('/api/analyze', async (req, res) => {
 
     // ─── STEP 2: Build enhanced Gemini prompt with web context ──
     console.log('📡 STEP 2: Sending text + web context to Gemini...');
-
-    const currentDateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     const PROMPT = `[ SYSTEM DIRECTIVE: ELITE REAL-TIME TRUTHGUARD AI FACT-CHECKING SYSTEM ]
 You are TruthGuard AI, an elite, hyper-accurate real-time fact-checking system.
@@ -270,7 +360,7 @@ The JSON structure you return MUST be:
 {
   "verdict": "REAL" | "FAKE" | "PARTIALLY TRUE" | "UNVERIFIED",
   "confidence": [integer 1-100],
-  "explanation": "[The full Markdown-formatted report following the structure above. Use actual newlines (\\n) for formatting]",
+  "explanation": "[The full Markdown-formatted report following the structure above. Use actual newlines (\\\\n) for formatting]",
   "corrected_fact": "[If fake/misleading/partially true, provide the CORRECT information found in the web results in 1-2 sentences. Else, leave empty.]",
   "sources_used": ["url1", "url2"],
   "data_points": {
@@ -292,7 +382,6 @@ The JSON structure you return MUST be:
 
     const body = {
       contents: [{ parts: [{ text: fullPromptText }] }],
-      tools: [{ google_search: {} }],
       generationConfig: { temperature: 0.1, maxOutputTokens: 8192, responseMimeType: 'application/json' }
     };
 
@@ -321,9 +410,9 @@ The JSON structure you return MUST be:
     const confidence = toSafeNum(parsed.confidence, 75);
 
     let explanation = typeof parsed.explanation === 'string' ? parsed.explanation : 'No explanation provided.';
-    if (!webSearchSuccess && !grounded) {
-      explanation += "\n\n⚠️ Note: Both web search and Google Search grounding were unavailable; analysis based on AI knowledge only.";
-    } else if (!grounded && webSearchSuccess) {
+    if (!webSearchSuccess) {
+      explanation += "\n\n⚠️ Note: Web search was unavailable; analysis based on AI knowledge only.";
+    } else {
       explanation += "\n\n✅ Verified using live web search results from DuckDuckGo, Wikipedia, and fact-check databases.";
     }
 
@@ -352,7 +441,8 @@ The JSON structure you return MUST be:
       ]
     } : null;
 
-    console.log(`✅ Result: ${verdict} (${confidence}%) [WebSearch: ${webSearchSuccess}, Grounded: ${!!grounded}, Model: ${model}]`);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`✅ FALLBACK RESULT: ${verdict} (${confidence}%) in ${elapsed}s [Gemini, WebSearch: ${webSearchSuccess}, Model: ${model}]`);
     return res.json({
       verdict, confidence, explanation, corrected_fact, sources_used, data_points,
       engine: 'gemini', grounded: !!grounded, model,

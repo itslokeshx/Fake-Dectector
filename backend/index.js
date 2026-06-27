@@ -883,8 +883,20 @@ app.get('/health', (req, res) => {
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`🚀 TruthGuard running on http://localhost:${PORT}`);
-  console.log(`🔑 Keys loaded: ${API_KEYS.length}/3`);
-  console.log(`🤖 Model: ${MODEL}`);
-  console.log('✅ Server ready!');
+  console.log(`\n🚀 TruthGuard AI running on http://localhost:${PORT}`);
+  console.log('─'.repeat(48));
+
+  // Fake News Engine priority
+  if (isGroqAvailable()) {
+    console.log(`⚡ FAKE NEWS ENGINE : Groq / Llama 3.3-70B  [PRIMARY]  — ${groqKeyCount()}/3 keys`);
+    console.log(`🧠 FALLBACK ENGINE  : Gemini ${MODEL}      — ${API_KEYS.length}/3 keys`);
+  } else {
+    console.log(`🧠 FAKE NEWS ENGINE : Gemini ${MODEL}      — ${API_KEYS.length}/3 keys`);
+    console.warn('⚠️  Groq keys not set — add GROQ_API_KEY_1/2/3 to .env for instant mode!');
+  }
+
+  // All other modules (Image, Research, Weather) always use Gemini
+  console.log(`🖼️  IMAGE / RESEARCH / WEATHER : Gemini ${MODEL} — always`);
+  console.log('─'.repeat(48));
+  console.log('✅ Server ready!\n');
 });

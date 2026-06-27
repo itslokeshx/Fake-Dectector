@@ -5,12 +5,17 @@
 
 import Groq from 'groq-sdk';
 
-// ─── Key Rotation Pool ─────────────────────────────────────────────────────
-const GROQ_KEYS = [
-  process.env.GROQ_API_KEY_1,
-  process.env.GROQ_API_KEY_2,
-  process.env.GROQ_API_KEY_3,
-].filter(Boolean);
+// ─── Lazy Key Reader ───────────────────────────────────────────────────────
+// IMPORTANT: Must be a function, NOT a module-level constant.
+// ES module imports run before dotenv.config() in index.js, so reading
+// process.env at the top level yields undefined for all keys.
+function getGroqKeys() {
+  return [
+    process.env.GROQ_API_KEY_1,
+    process.env.GROQ_API_KEY_2,
+    process.env.GROQ_API_KEY_3,
+  ].filter(Boolean);
+}
 
 // Lean system prompt — no bloat, pure fact-checking directives
 const TRUTHGUARD_SYSTEM_PROMPT = `You are TruthGuard AI, an elite real-time fact-checking system. Your job is to analyze claims and determine their truthfulness.
@@ -45,6 +50,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
  * @returns {object} The parsed JSON verdict from Llama
  */
 async function callGroqWithKeyRotation(payload) {
+  const GROQ_KEYS = getGroqKeys();
   if (GROQ_KEYS.length === 0) {
     throw new Error('No Groq API keys configured.');
   }
@@ -144,12 +150,12 @@ export async function callGroqFastVerdict(claim, webContext = '', dateStr = '') 
  * Check if at least one Groq key is configured.
  */
 export function isGroqAvailable() {
-  return GROQ_KEYS.length > 0;
+  return getGroqKeys().length > 0;
 }
 
 /**
  * Expose key count for health/warmup endpoints.
  */
 export function groqKeyCount() {
-  return GROQ_KEYS.length;
+  return getGroqKeys().length;
 }

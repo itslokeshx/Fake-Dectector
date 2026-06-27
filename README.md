@@ -89,7 +89,7 @@ TruthGuard AI uses a fully decoupled architecture optimized for real-time parall
 |                 Structured Grounding Prompt                |
 |                              |                             |
 |                              v                             |
-|                    Gemini AI Orchestrator                  |
+|               Dual-LLM Engine (Groq / Gemini)              |
 |                              |                             |
 |                              v                             |
 |                 JSON Parse & Verdict Mapping               |

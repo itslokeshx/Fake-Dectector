@@ -233,7 +233,11 @@ app.post('/api/analyze', async (req, res) => {
 
       let explanation = typeof finalResult.explanation === 'string' ? finalResult.explanation : 'No explanation provided.';
       if (webSearchSuccess) {
-        explanation += "\n\n✅ Verified using live web search results (DuckDuckGo/Yahoo, Wikipedia, Fact-Check databases).";
+        if (verdict === 'UNVERIFIED') {
+          explanation += "\n\n🔍 Live web search completed (DuckDuckGo/Yahoo, Wikipedia), but no conclusive reports were found to verify this claim.";
+        } else {
+          explanation += "\n\n✅ Verified using live web search results (DuckDuckGo/Yahoo, Wikipedia, Fact-Check databases).";
+        }
       } else {
         explanation += "\n\n⚠️ Note: Web search returned no results; analysis based on AI training knowledge.";
       }
@@ -398,7 +402,11 @@ The JSON structure you return MUST be:
     if (!webSearchSuccess) {
       explanation += "\n\n⚠️ Note: Web search was unavailable; analysis based on AI knowledge only.";
     } else {
-      explanation += "\n\n✅ Verified using live web search results from DuckDuckGo, Wikipedia, and fact-check databases.";
+      if (verdict === 'UNVERIFIED') {
+        explanation += "\n\n🔍 Live web search completed (DuckDuckGo/Yahoo, Wikipedia), but no conclusive reports were found to verify this claim.";
+      } else {
+        explanation += "\n\n✅ Verified using live web search results from DuckDuckGo, Wikipedia, and fact-check databases.";
+      }
     }
 
     const corrected_fact = (verdict === 'FAKE' || verdict === 'PARTIALLY TRUE') && typeof parsed.corrected_fact === 'string' ? parsed.corrected_fact : '';

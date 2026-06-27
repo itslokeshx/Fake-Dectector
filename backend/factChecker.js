@@ -567,7 +567,14 @@ export async function gatherLightWebContext(text) {
   const startTime = Date.now();
   console.log('\n⚡ ═══ Starting FAST Web Search Pipeline ═══');
 
-  const shortQuery = text.substring(0, 150).replace(/\n/g, ' ').trim();
+  let searchQuery = text.substring(0, 150).replace(/\n/g, ' ').trim();
+  if (text.length > 80) {
+    const kw = extractKeywords(text);
+    if (kw && kw.split(/\s+/).length >= 2) {
+      searchQuery = kw;
+    }
+  }
+  console.log(`🔍 Formulated Search Query: "${searchQuery}"`);
 
   const allResults = {
     ddgResults: [],
@@ -578,17 +585,17 @@ export async function gatherLightWebContext(text) {
 
   const searchPromises = [
     // 1. Google Fact Check API — fastest, ~0.5s
-    googleFactCheckSearch(shortQuery)
+    googleFactCheckSearch(searchQuery)
       .then(r => { allResults.googleFactChecks.push(...r); })
       .catch(() => {}),
 
-    // 2. Wikipedia — use shortQuery directly (keywords alone too sparse, returns 0)
-    wikipediaSearch(shortQuery)
+    // 2. Wikipedia — use searchQuery directly (keywords alone too sparse, returns 0)
+    wikipediaSearch(searchQuery)
       .then(r => { allResults.wikiResults.push(...r.slice(0, 2)); })
       .catch(() => {}),
 
     // 3. DDG first — if blocked/empty, immediately fall back to Yahoo
-    duckDuckGoSearch(shortQuery)
+    duckDuckGoSearch(searchQuery)
       .then(async r => {
         if (r.length > 0) {
           console.log(`✅ DDG returned ${r.length} results`);
@@ -596,7 +603,7 @@ export async function gatherLightWebContext(text) {
         } else {
           // DDG blocked — Yahoo is our reliable fallback (was returning 7 results in logs)
           console.log('⚠️  DDG blocked — falling back to Yahoo...');
-          const yahooR = await yahooSearch(shortQuery);
+          const yahooR = await yahooSearch(searchQuery);
           console.log(`✅ Yahoo fallback: ${yahooR.length} results`);
           allResults.ddgResults.push(...yahooR.slice(0, 6));
         }
@@ -604,7 +611,7 @@ export async function gatherLightWebContext(text) {
       .catch(async () => {
         try {
           console.log('⚠️  DDG error — falling back to Yahoo...');
-          const yahooR = await yahooSearch(shortQuery);
+          const yahooR = await yahooSearch(searchQuery);
           console.log(`✅ Yahoo fallback: ${yahooR.length} results`);
           allResults.ddgResults.push(...yahooR.slice(0, 6));
         } catch (_) {}

@@ -561,13 +561,13 @@ export function formatWebContextForPrompt(webContext) {
 }
 
 // ─── 8. Lightweight Web Context (Fast Path — for Groq/Llama) ─────────────────
-// Only the 3 fastest sources, single query each. Target: < 2 seconds.
+// Sources: Google FC (~0.5s) + Wikipedia (~1s) + DDG with Yahoo fallback (~1-2s)
+// Global 4s timeout — whichever sources finish in time are used.
 export async function gatherLightWebContext(text) {
   const startTime = Date.now();
   console.log('\n⚡ ═══ Starting FAST Web Search Pipeline ═══');
 
   const shortQuery = text.substring(0, 150).replace(/\n/g, ' ').trim();
-  const keywords = extractKeywords(text);
 
   const allResults = {
     ddgResults: [],
@@ -576,33 +576,48 @@ export async function gatherLightWebContext(text) {
     googleFactChecks: []
   };
 
-  // Race all 3 sources against a 3-second global timeout
   const searchPromises = [
-    // Google Fact Check API — fastest, ~0.5s
+    // 1. Google Fact Check API — fastest, ~0.5s
     googleFactCheckSearch(shortQuery)
       .then(r => { allResults.googleFactChecks.push(...r); })
       .catch(() => {}),
 
-    // Wikipedia — 1 query, ~1s
-    wikipediaSearch(keywords || shortQuery)
+    // 2. Wikipedia — use shortQuery directly (keywords alone too sparse, returns 0)
+    wikipediaSearch(shortQuery)
       .then(r => { allResults.wikiResults.push(...r.slice(0, 2)); })
       .catch(() => {}),
 
-    // DuckDuckGo — 1 query only (not 3!)
+    // 3. DDG first — if blocked/empty, immediately fall back to Yahoo
     duckDuckGoSearch(shortQuery)
-      .then(r => { allResults.ddgResults.push(...r.slice(0, 5)); })
-      .catch(() => {})
+      .then(async r => {
+        if (r.length > 0) {
+          console.log(`✅ DDG returned ${r.length} results`);
+          allResults.ddgResults.push(...r.slice(0, 6));
+        } else {
+          // DDG blocked — Yahoo is our reliable fallback (was returning 7 results in logs)
+          console.log('⚠️  DDG blocked — falling back to Yahoo...');
+          const yahooR = await yahooSearch(shortQuery);
+          console.log(`✅ Yahoo fallback: ${yahooR.length} results`);
+          allResults.ddgResults.push(...yahooR.slice(0, 6));
+        }
+      })
+      .catch(async () => {
+        try {
+          console.log('⚠️  DDG error — falling back to Yahoo...');
+          const yahooR = await yahooSearch(shortQuery);
+          console.log(`✅ Yahoo fallback: ${yahooR.length} results`);
+          allResults.ddgResults.push(...yahooR.slice(0, 6));
+        } catch (_) {}
+      })
   ];
 
-  // Global timeout: if any source is too slow, don't wait
-  const timeout = new Promise(resolve => setTimeout(resolve, 3000));
-  await Promise.race([
-    Promise.allSettled(searchPromises),
-    timeout
-  ]);
+  // 4s global timeout — generous enough for Yahoo fallback to land
+  const timeout = new Promise(resolve => setTimeout(resolve, 4000));
+  await Promise.race([Promise.allSettled(searchPromises), timeout]);
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`⚡ ═══ Fast Web Search Complete (${elapsed}s) ═══`);
+  const total = allResults.ddgResults.length + allResults.wikiResults.length + allResults.googleFactChecks.length;
+  console.log(`⚡ ═══ Fast Web Search Complete (${elapsed}s) — ${total} total results ═══`);
   console.log(`   Web: ${allResults.ddgResults.length} | Wiki: ${allResults.wikiResults.length} | Google FC: ${allResults.googleFactChecks.length}`);
 
   return allResults;
@@ -622,14 +637,14 @@ export function formatLightWebContext(webContext) {
   if (webContext.wikiResults?.length > 0) {
     sections.push('### Wikipedia');
     webContext.wikiResults.forEach(r => {
-      sections.push(`**${r.title}**: ${r.extract?.substring(0, 400) || ''}`);
+      sections.push(`**${r.title}**: ${r.extract?.substring(0, 500) || ''}`);
     });
   }
 
   if (webContext.ddgResults?.length > 0) {
     sections.push('### Web Results');
-    webContext.ddgResults.slice(0, 5).forEach((r, i) => {
-      sections.push(`${i + 1}. ${r.title} — ${r.snippet?.substring(0, 150) || ''}`);
+    webContext.ddgResults.slice(0, 6).forEach((r, i) => {
+      sections.push(`${i + 1}. ${r.title} — ${r.snippet?.substring(0, 200) || ''}`);
     });
   }
 

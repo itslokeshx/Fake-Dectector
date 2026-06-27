@@ -208,19 +208,14 @@ app.post('/api/analyze', async (req, res) => {
   const startTime = Date.now();
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // FAST PATH: Groq/Llama (target: < 3 seconds)
+  // FAST PATH: Groq/Llama (target: < 4 seconds)
   // ═══════════════════════════════════════════════════════════════════════════
   if (isGroqAvailable()) {
     console.log('\n⚡ FAST PATH: Using Groq/Llama for instant analysis...');
 
     try {
-      // Run Groq LLM + lightweight web search IN PARALLEL
-      const [groqResult, webContext] = await Promise.all([
-        callGroqFastVerdict(text.trim(), '', currentDateStr),
-        gatherLightWebContext(text.trim())
-      ]);
-
-      // Format web context and re-call Groq with context if we got results
+      // STEP 1: Gather web context first (DDG/Yahoo + Wikipedia + Google FC, 4s max)
+      const webContext = await gatherLightWebContext(text.trim());
       const webContextText = formatLightWebContext(webContext);
       const webSearchSuccess = (
         (webContext.ddgResults?.length > 0) ||
@@ -228,17 +223,9 @@ app.post('/api/analyze', async (req, res) => {
         (webContext.googleFactChecks?.length > 0)
       );
 
-      // If we have web context, do a second fast Groq call with context for accuracy
-      let finalResult = groqResult;
-      if (webSearchSuccess && webContextText.length > 50) {
-        try {
-          console.log('🔄 Enriching Groq verdict with web context...');
-          finalResult = await callGroqFastVerdict(text.trim(), webContextText, currentDateStr);
-        } catch (enrichErr) {
-          console.log('⚠️ Enrichment call failed, using initial verdict:', enrichErr.message);
-          // Keep the initial groqResult
-        }
-      }
+      // STEP 2: Single Groq call — always includes web context (even if empty)
+      console.log(`🔄 Calling Groq with web context (${webSearchSuccess ? webContextText.length + ' chars' : 'no results'})...`);
+      const finalResult = await callGroqFastVerdict(text.trim(), webContextText, currentDateStr);
 
       // Normalize response (same shape as Gemini path)
       const verdict = ['REAL', 'FAKE', 'PARTIALLY TRUE', 'UNVERIFIED'].includes(finalResult.verdict) ? finalResult.verdict : 'UNVERIFIED';
@@ -246,9 +233,9 @@ app.post('/api/analyze', async (req, res) => {
 
       let explanation = typeof finalResult.explanation === 'string' ? finalResult.explanation : 'No explanation provided.';
       if (webSearchSuccess) {
-        explanation += "\n\n✅ Verified using live web search results from DuckDuckGo, Wikipedia, and fact-check databases.";
+        explanation += "\n\n✅ Verified using live web search results (DuckDuckGo/Yahoo, Wikipedia, Fact-Check databases).";
       } else {
-        explanation += "\n\n⚠️ Note: Web search returned limited results; analysis based primarily on AI knowledge.";
+        explanation += "\n\n⚠️ Note: Web search returned no results; analysis based on AI training knowledge.";
       }
 
       const corrected_fact = (verdict === 'FAKE' || verdict === 'PARTIALLY TRUE') && typeof finalResult.corrected_fact === 'string' ? finalResult.corrected_fact : '';
@@ -274,7 +261,7 @@ app.post('/api/analyze', async (req, res) => {
       } : null;
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      console.log(`⚡ FAST RESULT: ${verdict} (${confidence}%) in ${elapsed}s [Groq/Llama + Web: ${webSearchSuccess}]`);
+      console.log(`⚡ FAST RESULT: ${verdict} (${confidence}%) in ${elapsed}s [Groq/Llama | Web: ${webSearchSuccess}]`);
 
       return res.json({
         verdict, confidence, explanation, corrected_fact, sources_used, data_points,

@@ -1,7 +1,90 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiX, FiInfo, FiCheckCircle, FiCopy, FiGlobe, FiExternalLink } from 'react-icons/fi';
+import { FiX, FiInfo, FiCheckCircle, FiCopy, FiGlobe, FiExternalLink, FiAlertTriangle, FiSearch } from 'react-icons/fi';
 import { playSuccessChime, playErrorBuzzer } from '../utils/audio';
+
+// ── Structured Report Renderer ────────────────────────────────────────────────
+// Parses TruthGuard's markdown explanation into clean styled sections.
+function ReportRenderer({ explanation, color, verdict }) {
+  if (!explanation) return null;
+
+  // Split on newlines, filter blanks
+  const lines = explanation.split('\n').map(l => l.trim());
+
+  const subClaims = [];
+  let summaryLines = [];
+  let webNote = '';
+
+  for (const line of lines) {
+    // Sub-claim: "  - ClaimText: STATUS - proof"
+    const claimMatch = line.match(/^[-*]\s+(.+?):\s*(VERIFIED\s+TRUE|VERIFIED\s+FALSE|UNVERIFIED)\s*[-–]\s*(.+)$/i);
+    if (claimMatch) {
+      subClaims.push({ claim: claimMatch[1].trim(), status: claimMatch[2].trim().toUpperCase(), proof: claimMatch[3].trim() });
+      continue;
+    }
+    // Web note appended at the bottom (starts with ✅ or ⚠️)
+    if (line.startsWith('✅') || line.startsWith('⚠️')) { webNote = line; continue; }
+    // Skip markdown headers and verdict/confidence meta lines (already shown in header)
+    if (line.startsWith('#') || line.match(/^\*\*Verdict:/i) || line.match(/^\*\*Confidence:/i) || line.match(/^\*\*Sub-Claim/i)) continue;
+    // Explanation paragraph lines — strip leading "* **Explanation:**" label
+    const expMatch = line.match(/^\*?\s*\*\*Explanation:\*\*\s*(.+)$/i);
+    if (expMatch) { summaryLines.push(expMatch[1].trim()); continue; }
+    // Plain prose lines (anything left that has real content)
+    if (line.length > 10 && !line.startsWith('*') && !line.startsWith('-')) summaryLines.push(line);
+  }
+
+  const statusStyle = (status) => {
+    if (status.includes('TRUE')) return { bg: 'rgba(34,197,94,0.12)', border: 'rgba(34,197,94,0.35)', text: '#4ade80', icon: '✔' };
+    if (status.includes('FALSE')) return { bg: 'rgba(239,68,68,0.12)', border: 'rgba(239,68,68,0.35)', text: '#f87171', icon: '✘' };
+    return { bg: 'rgba(234,179,8,0.10)', border: 'rgba(234,179,8,0.30)', text: '#facc15', icon: '?' };
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Sub-claims */}
+      {subClaims.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <p style={{ fontSize: 10, color: '#475569', letterSpacing: '0.2em', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 4 }}>Claim Breakdown</p>
+          {subClaims.map((c, i) => {
+            const s = statusStyle(c.status);
+            return (
+              <motion.div key={i} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 * i }}
+                style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ color: s.text, fontWeight: 900, fontSize: 14, flexShrink: 0, marginTop: 1 }}>{s.icon}</span>
+                <div style={{ flex: 1 }}>
+                  <p style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 600, margin: 0, lineHeight: 1.4 }}>{c.claim}</p>
+                  <p style={{ color: '#94a3b8', fontSize: 12, margin: '3px 0 0', lineHeight: 1.5 }}>{c.proof}</p>
+                </div>
+                <span style={{ color: s.text, fontSize: 9, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '0.1em', background: s.bg, border: `1px solid ${s.border}`, borderRadius: 6, padding: '2px 6px', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  {c.status.replace('VERIFIED ', '')}
+                </span>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Summary paragraph */}
+      {summaryLines.length > 0 && (
+        <div style={{ background: '#0a0f1a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: '14px 16px' }}>
+          <p style={{ fontSize: 10, color: '#475569', letterSpacing: '0.2em', fontFamily: 'monospace', textTransform: 'uppercase', marginBottom: 8 }}>Summary</p>
+          {summaryLines.map((l, i) => (
+            <p key={i} style={{ color: '#cbd5e1', fontSize: 14, lineHeight: 1.7, margin: i > 0 ? '6px 0 0' : 0 }}>{l}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Web verified note */}
+      {webNote && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 10, background: webNote.startsWith('✅') ? 'rgba(34,197,94,0.07)' : 'rgba(234,179,8,0.07)', border: `1px solid ${webNote.startsWith('✅') ? 'rgba(34,197,94,0.2)' : 'rgba(234,179,8,0.2)'}` }}>
+          <FiSearch size={12} style={{ color: webNote.startsWith('✅') ? '#4ade80' : '#facc15', flexShrink: 0 }} />
+          <p style={{ color: webNote.startsWith('✅') ? '#86efac' : '#fde68a', fontSize: 12, margin: 0 }}>{webNote}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── Animated confidence circle ────────────────────────────────────────────────
 function CircularConfidence({ value, color }) {
@@ -371,15 +454,12 @@ export default function ResultModal({ result, onClose }) {
                     </div>
                   </motion.div>
 
-                  {/* Explanation */}
+                  {/* Explanation — structured rich renderer */}
                   <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
                     <p className="text-[10px] text-slate-500 uppercase tracking-[3px] font-mono mb-2 flex items-center gap-2">
                       <FiInfo /> AI Reasoning
                     </p>
-                    <div className="p-5 rounded-2xl text-[15px] leading-relaxed border"
-                      style={{ background: '#0a0f1a', borderColor: 'rgba(255,255,255,0.05)', color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
-                      {explanation}
-                    </div>
+                    <ReportRenderer explanation={explanation} color={COLOR} verdict={result.verdict} />
                   </motion.div>
 
                   {/* Corrected Fact (FAKE or PARTIALLY TRUE) */}
